@@ -10,7 +10,7 @@ module.exports = {
   // Google OAuth Ayarları (Geleneksel ve GSI)
   GOOGLE: {
     CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '119348431264-s9u2tdbm9vd363eofbufcrmi1mfu1b1d.apps.googleusercontent.com',
-    CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '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',
+    CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
     CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL || 'https://roxenbot.onrender.com/auth/google/callback'
   },
 
