@@ -171,9 +171,6 @@ app.post('/api/user/custom-bot', auth.requireAuth, (req, res) => {
   res.json({ success: true, user: updated });
 });
 
-  res.json({ success: true, user: updated });
-});
-
 // Gemini AI Ayarları
 app.post('/api/user/gemini', auth.requireAuth, (req, res) => {
   const updated = db.updateUser(req.user.id, { geminiAI: req.body });
