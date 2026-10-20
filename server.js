@@ -156,19 +156,9 @@ app.post('/api/user/settings', auth.requireAuth, (req, res) => {
   res.json({ success: true, user: updated });
 });
 
-// Özel Bot İsmi & Token (VIP PRO Kontrollü)
+// Özel Bot İsmi & Token
 app.post('/api/user/custom-bot', auth.requireAuth, (req, res) => {
   const user = req.user;
-  const isPro = user.subscription?.plan === 'pro';
-
-  if (!isPro) {
-    return res.status(403).json({
-      success: false,
-      vipRequired: true,
-      error: 'Özel Bot İsmi tanımlama özelliği VIP PRO paket gerektirir. Lütfen üyeliğinizi yükseltin.'
-    });
-  }
-
   const { enabled, botUsername, botToken } = req.body;
   const updated = db.updateUser(user.id, {
     customBot: {
@@ -177,6 +167,8 @@ app.post('/api/user/custom-bot', auth.requireAuth, (req, res) => {
       botToken: (botToken || '').trim()
     }
   });
+  res.json({ success: true, user: updated });
+});
 
   res.json({ success: true, user: updated });
 });

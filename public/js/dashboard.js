@@ -94,21 +94,21 @@ function renderCustomBotSection() {
   const typeBadge = document.getElementById('display-bot-type-badge');
 
   if (lockBanner) {
-    lockBanner.style.display = isPro ? 'none' : 'flex';
+    lockBanner.style.display = 'none';
   }
 
   if (toggle) {
-    toggle.disabled = !isPro;
-    toggle.checked = Boolean(currentUser.customBot?.enabled && isPro);
+    toggle.disabled = false;
+    toggle.checked = Boolean(currentUser.customBot?.enabled);
   }
 
   if (userIn) {
-    userIn.disabled = !isPro;
+    userIn.disabled = false;
     userIn.value = currentUser.customBot?.botUsername || '';
   }
 
   if (tokenIn) {
-    tokenIn.disabled = !isPro;
+    tokenIn.disabled = false;
     tokenIn.value = currentUser.customBot?.botToken || '';
   }
 
@@ -210,12 +210,6 @@ async function saveChannelSettings() {
 }
 
 async function saveCustomBotSettings() {
-  const isPro = currentUser.subscription?.plan === 'pro';
-  if (!isPro) {
-    showToast('Özel Bot İsmi için VIP PRO paket gereklidir.', 'error');
-    return;
-  }
-
   const enabled = document.getElementById('toggle-custom-bot-active')?.checked ?? false;
   const botUsername = document.getElementById('input-custom-bot-username')?.value?.trim() || '';
   const botToken = document.getElementById('input-custom-bot-token')?.value?.trim() || '';

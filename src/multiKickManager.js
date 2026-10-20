@@ -249,16 +249,31 @@ class MultiKickManager {
     }
 
     // 2. Canlı Yayın Olayları
-    const pushData = data.push?.pub?.data;
-    if (!pushData) return;
+    const pub = data.push?.pub;
+    if (!pub || !pub.data) return;
 
-    const eventType = data.push?.pub?.event || pushData.type;
+    let eventData = pub.data;
+    if (typeof eventData === 'string') {
+      try { eventData = JSON.parse(eventData); } catch (e) {}
+    }
+
+    const eventType = eventData.event || data.push?.pub?.event || '';
+    let payload = eventData.data !== undefined ? eventData.data : eventData;
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch (e) {}
+    }
 
     // A) Canlı Sohbet Mesajı
-    if (eventType === 'App\\Events\\ChatMessageEvent' || pushData.message) {
-      const chatMsg = pushData.message || pushData;
+    if (
+      eventType === 'App\\Events\\ChatMessageEvent' ||
+      eventType.includes('ChatMessage') ||
+      payload.content !== undefined ||
+      payload.message !== undefined
+    ) {
+      const chatMsg = payload.message || payload;
       const username = chatMsg.sender?.username || 'İzleyici';
       const content = chatMsg.content || '';
+      console.log(`💬 [MultiKick Chat] ${worker.channelSlug} | ${username}: ${content}`);
 
       // Yayıncının kendi OBS Chat Overlay'ine ilet
       if (this.io) {
@@ -277,8 +292,8 @@ class MultiKickManager {
     }
 
     // B) Takipçi Olayı
-    if (eventType === 'App\\Events\\FollowersUpdated') {
-      const follower = pushData.follower?.username || pushData.username || 'Yeni Takipçi';
+    if (eventType === 'App\\Events\\FollowersUpdated' || eventType.includes('Follow')) {
+      const follower = payload.follower?.username || payload.username || 'Yeni Takipçi';
       console.log(`⭐ [MultiKick Takip] '${worker.channelSlug}' kanalı takip edildi: ${follower}`);
       if (this.io) {
         this.io.to('obs_' + user.apiKey).emit('alert', {
@@ -290,8 +305,9 @@ class MultiKickManager {
     }
 
     // C) Abone Olayı
-    if (eventType === 'App\\Events\\SubscriptionEvent') {
-      const subscriber = pushData.username || 'Yeni Abone';
+    if (eventType === 'App\\Events\\SubscriptionEvent' || eventType.includes('Subscription')) {
+      const subscriber = payload.username || 'Yeni Abone';
+      console.log(`👑 [MultiKick Abone] '${worker.channelSlug}' kanalı abone: ${subscriber}`);
       if (this.io) {
         this.io.to('obs_' + user.apiKey).emit('alert', {
           type: 'sub',
@@ -311,14 +327,21 @@ class MultiKickManager {
     const currentBotName = this.getActiveBotUsername(user).toLowerCase();
     if (username.toLowerCase() === currentBotName) return;
 
-    // 1. Özel Komut Kontrolü
+    // 1. Özel Komut Kontrolü (!dc, !oyun, !instagram vb.)
     const matchedCmd = (user.commands || []).find(c => c.enabled && lower === `!${c.name.toLowerCase()}`);
     if (matchedCmd) {
       await this.sendKickMessage(worker, user, matchedCmd.response);
       return;
     }
 
-    // 2. Gemini AI Cevabı (Bot'a seslenildiğinde: "bot ...", "!ai", vb.)
+    // 2. Otomatik Yanıtlar (sa, selam, slm, merhaba)
+    const matchedAuto = (user.autoReplies || []).find(r => r.enabled && r.keywords.some(k => lower === k.toLowerCase() || lower.startsWith(k.toLowerCase() + ' ')));
+    if (matchedAuto) {
+      await this.sendKickMessage(worker, user, matchedAuto.response);
+      return;
+    }
+
+    // 3. Gemini AI Cevabı (Bot'a seslenildiğinde: "bot ...", "!ai", vb.)
     const isAiTrigger = lower.startsWith('!ai') ||
                         lower.startsWith('!gemini') ||
                         /\b(bot|roxen|roxenbot)\b/i.test(text);
@@ -344,29 +367,33 @@ class MultiKickManager {
   }
 
   /**
-   * Kullanıcının VIP PRO olup olmamasına göre mesajı:
-   * - VIP PRO ise: Kullanıcının Kendi Özel Bot Hesabından (Özel Bot İsmi)
-   * - Free ise: Standart RoxenBot Hesabından gönderir.
+   * Kullanıcının bot token'ı:
+   * - Kullanıcı kendi token'ını girdiyse öncelikle onu kullanır
+   * - Girmediyse sistem varsayılan token'ını dener
    */
   getActiveBotToken(user) {
-    if (user.subscription?.plan === 'pro' && user.customBot?.enabled && user.customBot?.botToken) {
+    if (user.customBot?.botToken && user.customBot.botToken.trim()) {
       return user.customBot.botToken.trim();
     }
-    return config.DEFAULT_BOT.TOKEN;
+    return config.DEFAULT_BOT.TOKEN || '';
   }
 
   getActiveBotUsername(user) {
-    if (user.subscription?.plan === 'pro' && user.customBot?.enabled && user.customBot?.botUsername) {
+    if (user.customBot?.botUsername && user.customBot.botUsername.trim()) {
       return user.customBot.botUsername.trim();
     }
-    return config.DEFAULT_BOT.USERNAME;
+    return config.DEFAULT_BOT.USERNAME || 'RoxenBot';
   }
 
   async sendKickMessage(worker, user, messageText) {
     const token = this.getActiveBotToken(user);
-    if (!token) return false;
+    if (!token) {
+      console.warn(`[MultiKick] '${worker.channelSlug}' için bot token tanımlı değil, mesaj gönderilemedi.`);
+      return false;
+    }
 
     try {
+      const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
       await axios.post(
         `https://kick.com/api/v2/messages/send/${worker.chatroomId}`,
         {
@@ -375,19 +402,20 @@ class MultiKickManager {
         },
         {
           headers: {
-            'Authorization': `Bearer ${token.replace(/^Bearer /i, '')}`,
+            'Authorization': `Bearer ${cleanToken}`,
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             'Referer': `https://kick.com/${worker.channelSlug}`,
+            'x-app-platform': 'web',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
           },
           timeout: 8000
         }
       );
-      console.log(`[MultiKick Mesaj Gönderildi] (${worker.channelSlug}) -> "${messageText}" [Bot: ${this.getActiveBotUsername(user)}]`);
+      console.log(`✅ [MultiKick Mesaj Gönderildi] (${worker.channelSlug}) -> "${messageText}" [Bot: ${this.getActiveBotUsername(user)}]`);
       return true;
     } catch (err) {
-      console.error(`[MultiKick Mesaj Hatası] (${worker.channelSlug}):`, err.response?.data?.message || err.message);
+      console.error(`❌ [MultiKick Mesaj Hatası] (${worker.channelSlug}):`, err.response?.data?.message || err.message);
       return false;
     }
   }
