@@ -368,6 +368,90 @@ class MultiKickManager {
     if (!worker.lastChatUsers) worker.lastChatUsers = {};
     worker.lastChatUsers[username] = Date.now();
 
+    // 🎁 Çekiliş Katılım Takibi
+    if (user.giveaway?.active && user.giveaway.keyword) {
+      const kw = user.giveaway.keyword.toLowerCase().trim();
+      if (lower === kw || lower.startsWith(kw + ' ')) {
+        const parts = user.giveaway.participants || [];
+        if (!parts.some(p => p.username?.toLowerCase() === username.toLowerCase())) {
+          parts.push({ username, joinedAt: Date.now() });
+          user.giveaway.participants = parts;
+          db.updateUser(user.id, { giveaway: user.giveaway });
+          if (this.io) {
+            this.io.to('dashboard_' + user.id).emit('giveaway_update', user.giveaway);
+          }
+          console.log(`🎁 [Çekiliş] ${username} çekilişe katıldı! Toplam: ${parts.length}`);
+        }
+      }
+    }
+
+    // 🥤 Sadakat / Puan Sistemi Takibi & !puan Komutu
+    if (user.loyalty?.enabled) {
+      if (!user.loyalty.users) user.loyalty.users = {};
+      const addPts = Number(user.loyalty.bonusPerChat) || 5;
+      user.loyalty.users[username] = (user.loyalty.users[username] || 0) + addPts;
+      db.updateUser(user.id, { loyalty: user.loyalty });
+
+      if (lower === '!puan' || lower === '!points' || lower === '!salgam') {
+        const pts = user.loyalty.users[username] || 0;
+        const ptsName = user.loyalty.pointsName || 'Şalgam Puanı';
+        await this.sendKickMessage(worker, user, `🥤 @${username} senin toplam ${pts} ${ptsName}'n var! Afiyet şeker olsun kirvem!`);
+        return;
+      }
+    }
+
+    // 📌 Klip / Önemli Anlar (!klip / !vurgu)
+    if (lower === '!klip' || lower === '!vurgu' || lower.startsWith('!klip ') || lower.startsWith('!vurgu ')) {
+      const time = new Date().toLocaleTimeString('tr-TR');
+      const note = text.replace(/^(!klip|!vurgu)\s*/i, '').trim() || 'Chat Vurgusu';
+      const list = user.highlights || [];
+      const hl = { id: 'hl_' + Date.now(), streamTime: time, username, note };
+      list.unshift(hl);
+      db.updateUser(user.id, { highlights: list });
+      if (this.io) {
+        this.io.to('dashboard_' + user.id).emit('highlight_added', hl);
+      }
+      await this.sendKickMessage(worker, user, `📌 @${username} önemli anı kaydettim kirvem! [${time} - ${note}]`);
+      return;
+    }
+
+    // 🎲 Mini Eğlence Oyunları (Adana Usulü)
+    if (lower === '!zar') {
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      const sum = d1 + d2;
+      const comment = sum >= 9 ? 'Helal olsun kirvem, düşeş attın!' : sum <= 4 ? 'Şansına küs gardaş, acılı şalgam iyi gelir!' : 'Fena değil aslanım!';
+      await this.sendKickMessage(worker, user, `🎲 @${username} zar attı: [${d1} - ${d2}] Toplam: ${sum}! ${comment}`);
+      return;
+    }
+
+    if (lower === '!yazitura' || lower === '!yazıtura') {
+      const res = Math.random() > 0.5 ? 'YAZI' : 'TURA';
+      await this.sendKickMessage(worker, user, `🪙 @${username} madeni para attı: ${res} geldi gardaş!`);
+      return;
+    }
+
+    if (lower === '!kebap' || lower === '!şalgam') {
+      const lezzetler = [
+        'Metrelik acılı Adana kebabı',
+        'Bol buzlu bici bici',
+        'Acılı şalgam ve köz biber',
+        'Kazancılar Çarşısı ciğeri',
+        'Taşköprü manzaralı kaçak çay',
+        'Közde pişmiş sıcak şırdan'
+      ];
+      const pick = lezzetler[Math.floor(Math.random() * lezzetler.length)];
+      await this.sendKickMessage(worker, user, `🌶️ @${username} sana benden bir porsiyon ${pick} ısmarladım, afiyet şeker olsun kirvem!`);
+      return;
+    }
+
+    if (lower.startsWith('!duello') || lower.startsWith('!düello')) {
+      const target = text.split(' ')[1] || 'Yayıncı';
+      const winner = Math.random() > 0.5 ? username : target.replace(/^@/, '');
+      await this.sendKickMessage(worker, user, `⚔️ @${username} ile ${target} Taşköprü'de Adana usulü düelloya tutuştu! Kazanan: @${winner}! 👑`);
+      return;
+    }
+
     // 1. Özel Komut Kontrolü (!dc, !oyun, !instagram vb.)
     const matchedCmd = (user.commands || []).find(c => c.enabled && lower === `!${c.name.toLowerCase()}`);
     if (matchedCmd) {

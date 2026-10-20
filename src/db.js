@@ -149,6 +149,36 @@ class Database {
         cooldownSec: 25,
         funnyReplies: [...adanaQuotes.FUNNY_REPLIES],
         idleReplies: [...adanaQuotes.IDLE_REPLIES]
+      },
+
+      // 🎁 Çekiliş Sistemi
+      giveaway: {
+        active: false,
+        prize: '',
+        keyword: '!katil',
+        requireFollow: false,
+        subMultiplier: 1,
+        participants: [],
+        winner: null
+      },
+
+      // 🥤 Puan & Sadakat
+      loyalty: {
+        enabled: true,
+        pointsName: 'Şalgam Puanı',
+        pointsPerMinute: 10,
+        bonusPerChat: 5,
+        users: {}
+      },
+
+      // 📌 Önemli Anlar / Klipler
+      highlights: [],
+
+      // 📢 Discord Duyuru
+      discord: {
+        enabled: false,
+        webhookUrl: '',
+        customMessage: '🌶️ Canlı Yayındayız Gardaş! Toplanın yerinizi alın, acılı kebaplar benden!'
       }
     };
 
@@ -159,15 +189,29 @@ class Database {
 
   getUserById(id) {
     const user = this.users.get(id);
-    if (user && !user.adanaMode) {
-      user.adanaMode = {
-        enabled: true,
-        idleMinutes: 2,
-        banterChance: 40,
-        cooldownSec: 25,
-        funnyReplies: [...adanaQuotes.FUNNY_REPLIES],
-        idleReplies: [...adanaQuotes.IDLE_REPLIES]
-      };
+    if (user) {
+      if (!user.adanaMode) {
+        user.adanaMode = {
+          enabled: true,
+          idleMinutes: 2,
+          banterChance: 40,
+          cooldownSec: 25,
+          funnyReplies: [...adanaQuotes.FUNNY_REPLIES],
+          idleReplies: [...adanaQuotes.IDLE_REPLIES]
+        };
+      }
+      if (!user.giveaway) {
+        user.giveaway = { active: false, prize: '', keyword: '!katil', requireFollow: false, subMultiplier: 1, participants: [], winner: null };
+      }
+      if (!user.loyalty) {
+        user.loyalty = { enabled: true, pointsName: 'Şalgam Puanı', pointsPerMinute: 10, bonusPerChat: 5, users: {} };
+      }
+      if (!user.highlights) {
+        user.highlights = [];
+      }
+      if (!user.discord) {
+        user.discord = { enabled: false, webhookUrl: '', customMessage: '🌶️ Canlı Yayındayız Gardaş!' };
+      }
     }
     return user || null;
   }
@@ -199,6 +243,10 @@ class Database {
     if (updates.geminiAI) user.geminiAI = { ...user.geminiAI, ...updates.geminiAI };
     if (updates.widgets) user.widgets = { ...user.widgets, ...updates.widgets };
     if (updates.adanaMode) user.adanaMode = { ...user.adanaMode, ...updates.adanaMode };
+    if (updates.giveaway) user.giveaway = { ...user.giveaway, ...updates.giveaway };
+    if (updates.loyalty) user.loyalty = { ...user.loyalty, ...updates.loyalty };
+    if (updates.highlights) user.highlights = updates.highlights;
+    if (updates.discord) user.discord = { ...user.discord, ...updates.discord };
     if (updates.commands) user.commands = updates.commands;
     if (updates.timers) user.timers = updates.timers;
     if (updates.autoReplies) user.autoReplies = updates.autoReplies;

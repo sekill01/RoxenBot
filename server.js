@@ -493,11 +493,180 @@ app.post('/api/chat/send', auth.requireAuth, async (req, res) => {
   res.json(sendRes);
 });
 
-// Sadakat, Çekiliş, Klipler, Discord Fallbacks
-app.get('/api/loyalty', auth.requireAuth, (req, res) => res.json({ success: true, config: { enabled: false } }));
-app.get('/api/giveaway', auth.requireAuth, (req, res) => res.json({ success: true, giveaway: { active: false, participants: [] } }));
-app.get('/api/highlights', auth.requireAuth, (req, res) => res.json({ success: true, highlights: [] }));
-app.get('/api/discord', auth.requireAuth, (req, res) => res.json({ success: true, config: { enabled: false } }));
+// =================== ÇEKİLİŞ, SADAKAT, KLİPLER & DİSCORD MODÜLLERİ ===================
+
+// 1. Çekiliş Sistemi (Giveaway)
+app.get('/api/giveaway', auth.requireAuth, (req, res) => {
+  res.json({ success: true, giveaway: req.user.giveaway || { active: false, participants: [] } });
+});
+
+app.post('/api/giveaway/start', auth.requireAuth, async (req, res) => {
+  const { prize, keyword = '!katil', requireFollow = false, subMultiplier = 1 } = req.body;
+  const giveaway = {
+    active: true,
+    prize: prize || 'Canlı Yayın Hediyesi',
+    keyword: keyword || '!katil',
+    requireFollow,
+    subMultiplier,
+    participants: [],
+    winner: null,
+    startedAt: Date.now()
+  };
+  db.updateUser(req.user.id, { giveaway });
+  if (io) io.to('dashboard_' + req.user.id).emit('giveaway_update', giveaway);
+  
+  // Sohbete duyuru gönder
+  const worker = multiKickManager.activeWorkers.get(req.user.id);
+  if (worker) {
+    await multiKickManager.sendKickMessage(worker, req.user, `🎉 ÇEKİLİŞ BAŞLADI! Ödül: "${giveaway.prize}". Katılmak için sohbete ${giveaway.keyword} yazın! 🎁`);
+  }
+  res.json({ success: true, giveaway });
+});
+
+app.post('/api/giveaway/roll', auth.requireAuth, async (req, res) => {
+  const user = req.user;
+  const gw = user.giveaway;
+  if (!gw || !gw.participants || gw.participants.length === 0) {
+    return res.status(400).json({ success: false, message: 'Çekilişe katılan kimse bulunamadı.' });
+  }
+  const winnerObj = gw.participants[Math.floor(Math.random() * gw.participants.length)];
+  gw.winner = winnerObj.username;
+  gw.active = false;
+  db.updateUser(user.id, { giveaway: gw });
+
+  if (io) {
+    io.to('dashboard_' + user.id).emit('giveaway_winner', { username: winnerObj.username, prize: gw.prize });
+    io.to('dashboard_' + user.id).emit('giveaway_update', gw);
+  }
+
+  // Sohbete kazananı duyur
+  const worker = multiKickManager.activeWorkers.get(user.id);
+  if (worker) {
+    await multiKickManager.sendKickMessage(worker, user, `👑 ÇEKİLİŞ KAZANANI: @${winnerObj.username}! "${gw.prize}" ödülünü kazandı! Tebrikler kirvem! 🎊`);
+  }
+  res.json({ success: true, winner: { username: winnerObj.username, prize: gw.prize } });
+});
+
+app.post('/api/giveaway/end', auth.requireAuth, (req, res) => {
+  const gw = req.user.giveaway || {};
+  gw.active = false;
+  db.updateUser(req.user.id, { giveaway: gw });
+  if (io) io.to('dashboard_' + req.user.id).emit('giveaway_update', gw);
+  res.json({ success: true, giveaway: gw });
+});
+
+// 2. Sadakat / Puan Sistemi (Loyalty)
+app.get('/api/loyalty', auth.requireAuth, (req, res) => {
+  const loyalty = req.user.loyalty || { enabled: true, pointsName: 'Şalgam Puanı', pointsPerMinute: 10, bonusPerChat: 5, users: {} };
+  const userMap = loyalty.users || {};
+  const topUsers = Object.entries(userMap)
+    .map(([username, points]) => ({ username, points }))
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 20);
+  res.json({ success: true, loyalty, topUsers });
+});
+
+app.post('/api/loyalty/config', auth.requireAuth, (req, res) => {
+  const updated = db.updateUser(req.user.id, { loyalty: { ...req.user.loyalty, ...req.body } });
+  res.json({ success: true, loyalty: updated.loyalty });
+});
+
+app.post('/api/loyalty/user', auth.requireAuth, (req, res) => {
+  const { username, points } = req.body;
+  if (!username) return res.status(400).json({ success: false, message: 'Kullanıcı adı gerekli' });
+  const loyalty = req.user.loyalty || {};
+  if (!loyalty.users) loyalty.users = {};
+  loyalty.users[username] = Number(points) || 0;
+  db.updateUser(req.user.id, { loyalty });
+  res.json({ success: true, user: { username, points: loyalty.users[username] } });
+});
+
+app.post('/api/loyalty/reset', auth.requireAuth, (req, res) => {
+  const loyalty = req.user.loyalty || {};
+  loyalty.users = {};
+  db.updateUser(req.user.id, { loyalty });
+  res.json({ success: true, message: 'Tüm puanlar sıfırlandı.' });
+});
+
+// 3. Önemli Anlar / Klipler (Highlights)
+app.get('/api/highlights', auth.requireAuth, (req, res) => {
+  res.json({ success: true, highlights: req.user.highlights || [] });
+});
+
+app.post('/api/highlights', auth.requireAuth, (req, res) => {
+  const { note, streamTime, username } = req.body;
+  const time = streamTime || new Date().toLocaleTimeString('tr-TR');
+  const list = req.user.highlights || [];
+  const added = {
+    id: 'hl_' + Date.now(),
+    streamTime: time,
+    username: username || req.user.name,
+    note: note || 'Önemli An'
+  };
+  list.unshift(added);
+  db.updateUser(req.user.id, { highlights: list });
+  if (io) io.to('dashboard_' + req.user.id).emit('highlight_added', added);
+  res.json({ success: true, highlight: added, highlights: list });
+});
+
+app.delete('/api/highlights/:id', auth.requireAuth, (req, res) => {
+  let list = req.user.highlights || [];
+  list = list.filter(h => h.id !== req.params.id);
+  db.updateUser(req.user.id, { highlights: list });
+  res.json({ success: true, highlights: list });
+});
+
+app.delete('/api/highlights', auth.requireAuth, (req, res) => {
+  db.updateUser(req.user.id, { highlights: [] });
+  res.json({ success: true });
+});
+
+// 4. Discord Entegrasyonu & Canlı Yayın Duyuruları
+app.get('/api/discord', auth.requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    config: req.user.discord || { enabled: false, webhookUrl: '' },
+    isWebhookConfigured: Boolean(req.user.discord?.webhookUrl)
+  });
+});
+
+app.post('/api/discord/config', auth.requireAuth, (req, res) => {
+  const updated = db.updateUser(req.user.id, { discord: { ...req.user.discord, ...req.body } });
+  res.json({ success: true, config: updated.discord });
+});
+
+app.post('/api/discord/test', auth.requireAuth, async (req, res) => {
+  const { webhookUrl, customText } = req.body;
+  const targetUrl = webhookUrl || req.user.discord?.webhookUrl;
+  if (!targetUrl) {
+    return res.status(400).json({ success: false, error: 'Discord Webhook URL girilmemiş!' });
+  }
+
+  const channelSlug = req.user.settings?.channelSlug || 'syrex-nines';
+  const text = customText || req.user.discord?.customMessage || `🌶️ ${req.user.name} Kick'te Canlı Yayına Başladı!`;
+
+  try {
+    const axios = require('axios');
+    await axios.post(targetUrl, {
+      content: '@everyone',
+      embeds: [{
+        title: `🔥 CANLI YAYIN: ${channelSlug.toUpperCase()}`,
+        url: `https://kick.com/${channelSlug}`,
+        description: text,
+        color: 0x53fc18,
+        fields: [
+          { name: '📺 Kanal', value: `[kick.com/${channelSlug}](https://kick.com/${channelSlug})`, inline: true },
+          { name: '🎮 Platform', value: 'Kick.com (01 Adana)', inline: true }
+        ],
+        footer: { text: 'RoxenBot Kick 🌶️ Adana Edition' },
+        timestamp: new Date().toISOString()
+      }]
+    });
+    res.json({ success: true, message: 'Discord duyurusu başarıyla gönderildi!' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: 'Discord Webhook hatası: ' + err.message });
+  }
+});
 
 // Sohbete Test Mesajı Gönder (Token ve Bağlantı Doğrulama)
 app.post('/api/bot/send-test', auth.requireAuth, async (req, res) => {
