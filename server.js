@@ -252,27 +252,57 @@ app.post('/api/bot/send-test', auth.requireAuth, async (req, res) => {
   }
 
   let chatroomId = null;
+  let channelId = null;
+  let broadcasterUserId = null;
+
   const worker = multiKickManager.activeWorkers.get(user.id);
   if (worker && worker.chatroomId) {
     chatroomId = worker.chatroomId;
+    channelId = worker.channelId;
+    broadcasterUserId = worker.broadcasterUserId;
   } else {
     try {
       const ch = await multiKickManager.fetchKickChannel(channelSlug);
       chatroomId = ch.chatroom?.id || ch.id;
+      channelId = ch.id;
+      broadcasterUserId = ch.user_id || ch.id;
     } catch (e) {
       return res.status(400).json({ success: false, error: 'Kanal bilgileri alınamadı: ' + e.message });
     }
   }
 
+  const botUsername = multiKickManager.getActiveBotUsername(user);
+  console.log(`[send-test] Test mesajı gönderiliyor: kanal=${channelSlug}, bot=${botUsername}, chatroomId=${chatroomId}, channelId=${channelId}, broadcasterUserId=${broadcasterUserId}`);
+
   const result = await multiKickManager.sendKickMessageDirect({
     channelSlug,
     chatroomId,
+    channelId,
+    broadcasterUserId,
     token,
-    messageText: req.body.message || `🤖 [Test] RoxenBot sohbet bağlantısı başarılı!`,
-    botUsername: multiKickManager.getActiveBotUsername(user)
+    messageText: req.body.message || `🤖 [Test] RoxenBot sohbet bağlantısı başarılı! 👋`,
+    botUsername
   });
 
   res.json(result);
+});
+
+// Bot Token Teşhis Endpoint'i (Sadece Süper Yönetici mobiloyunlog@gmail.com)
+app.get('/api/admin/bot-token-check', auth.requireAdmin, (req, res) => {
+  const user = req.user;
+  const token = multiKickManager.getActiveBotToken(user);
+  const clean = token ? token.replace(/^Bearer\s+/i, '').trim().replace(/^["']|["']$/g, '') : '';
+  res.json({
+    email: user.email,
+    hasToken: Boolean(token),
+    tokenPrefix: clean ? clean.substring(0, 8) + '...' : 'yok',
+    tokenLength: clean ? clean.length : 0,
+    isKatToken: clean.startsWith('kat_'),
+    isJwtToken: clean.startsWith('ey'),
+    isCookie: clean.includes('='),
+    botUsername: user.customBot?.botUsername || '',
+    channelSlug: user.settings?.channelSlug || ''
+  });
 });
 
 // =================== 3. ÖDEME & ABONELİK (SHOPIER / PAYTR) ===================

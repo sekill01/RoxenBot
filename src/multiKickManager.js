@@ -44,6 +44,7 @@ class MultiKickManager {
         userId,
         channelSlug,
         channelId: channelData.id,
+        broadcasterUserId: channelData.user_id || channelData.id,
         chatroomId: channelData.chatroom.id,
         channelData,
         ws: null,
@@ -132,6 +133,7 @@ class MultiKickManager {
     if (cleanSlug === 'syrex-nines' || cleanSlug === 'syrex_nines') {
       return {
         id: 32312171,
+        user_id: 33368381,
         slug: 'syrex-nines',
         chatroom: { id: 32023850 }
       };
@@ -401,6 +403,8 @@ class MultiKickManager {
     const res = await this.sendKickMessageDirect({
       channelSlug: worker.channelSlug,
       chatroomId: worker.chatroomId,
+      channelId: worker.channelId,
+      broadcasterUserId: worker.broadcasterUserId || worker.channelId,
       token,
       messageText,
       botUsername: this.getActiveBotUsername(user)
@@ -408,16 +412,117 @@ class MultiKickManager {
     return res.success;
   }
 
-  async sendKickMessageDirect({ channelSlug, chatroomId, token, messageText, botUsername = 'RoxenBot' }) {
+  async sendKickMessageDirect({
+    channelSlug,
+    chatroomId,
+    channelId,
+    broadcasterUserId,
+    token,
+    messageText,
+    botUsername = 'RoxenBot'
+  }) {
     if (!token) {
       console.warn(`[MultiKick] '${channelSlug}' için bot token tanımlı değil.`);
       return { success: false, error: 'Bot token girilmemiş! Lütfen geçerli bir Kick Bot Token yapıştırın.' };
     }
 
+    let cleanToken = String(token || '').trim().replace(/^["']|["']$/g, '');
+    while (cleanToken.toLowerCase().startsWith('bearer ')) {
+      cleanToken = cleanToken.slice(7).trim();
+    }
+
+    const errors = [];
+
+    // =========================================================================
+    // YÖNTEM 1: Kick Resmi Public API (https://api.kick.com/public/v1/chat)
+    // Cloudflare Datacenter IP engeli YOKTUR! Resmi OAuth / Developer tokenları içindir.
+    // =========================================================================
     try {
-      const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
-      const res = await axios.post(
+      const targetUserId = Number(broadcasterUserId || channelId);
+      console.log(`[MultiKick] Yöntem 1 (Resmi API) deneniyor: broadcaster_user_id=${targetUserId}`);
+      const officialRes = await axios.post(
+        'https://api.kick.com/public/v1/chat',
+        {
+          broadcaster_user_id: targetUserId,
+          content: messageText,
+          type: 'user'
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${cleanToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 7000
+        }
+      );
+
+      if (officialRes.status === 200 || officialRes.status === 201) {
+        console.log(`✅ [MultiKick Resmi API Başarılı] (${channelSlug}) -> "${messageText}" [Bot: ${botUsername}]`);
+        return { success: true, apiType: 'official', data: officialRes.data };
+      }
+    } catch (err1) {
+      const s1 = err1.response?.status;
+      const m1 = err1.response?.data?.message || err1.message;
+      console.warn(`[MultiKick Yöntem 1 Başarısız (${s1})]:`, m1);
+      errors.push(`Resmi API (${s1 || 'Ağ'}): ${m1}`);
+    }
+
+    // =========================================================================
+    // YÖNTEM 2: Kick Web v2 API (https://kick.com/api/v2/messages/send/${chatroomId})
+    // =========================================================================
+    try {
+      const headers = {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Accept': 'application/json, text/plain, */*',
+        'Content-Type': 'application/json',
+        'Referer': `https://kick.com/${channelSlug}`,
+        'Origin': 'https://kick.com',
+        'x-app-platform': 'web',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"'
+      };
+
+      // Cookie formatında ise Cookie başlığı olarak da ilet
+      if (cleanToken.includes('session') || cleanToken.includes('=')) {
+        headers['Cookie'] = cleanToken;
+        const xsrfMatch = cleanToken.match(/XSRF-TOKEN=([^;]+)/i);
+        if (xsrfMatch) {
+          headers['X-XSRF-TOKEN'] = decodeURIComponent(xsrfMatch[1]);
+        }
+      }
+
+      console.log(`[MultiKick] Yöntem 2 (Web v2) deneniyor: chatroomId=${chatroomId}`);
+      const v2Res = await axios.post(
         `https://kick.com/api/v2/messages/send/${chatroomId}`,
+        {
+          content: messageText,
+          type: 'message'
+        },
+        {
+          headers,
+          timeout: 7000
+        }
+      );
+
+      console.log(`✅ [MultiKick Web v2 Başarılı] (${channelSlug}) -> "${messageText}" [Bot: ${botUsername}]`);
+      return { success: true, apiType: 'web-v2', data: v2Res.data };
+    } catch (err2) {
+      const s2 = err2.response?.status;
+      const m2 = err2.response?.data?.status?.message || err2.response?.data?.message || err2.message;
+      console.warn(`[MultiKick Yöntem 2 Başarısız (${s2})]:`, m2);
+      errors.push(`Web v2 (${s2 || 'Ağ'}): ${m2}`);
+    }
+
+    // =========================================================================
+    // YÖNTEM 3: Kick Web v1 API (https://kick.com/api/v1/chatrooms/${chatroomId}/messages)
+    // =========================================================================
+    try {
+      console.log(`[MultiKick] Yöntem 3 (Web v1) deneniyor: chatroomId=${chatroomId}`);
+      const v1Res = await axios.post(
+        `https://kick.com/api/v1/chatrooms/${chatroomId}/messages`,
         {
           content: messageText,
           type: 'message'
@@ -427,25 +532,36 @@ class MultiKickManager {
             'Authorization': `Bearer ${cleanToken}`,
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Referer': `https://kick.com/${channelSlug}`,
-            'x-app-platform': 'web',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': `https://kick.com/${channelSlug}`
           },
-          timeout: 8000
+          timeout: 7000
         }
       );
-      console.log(`✅ [MultiKick Mesaj Gönderildi] (${channelSlug}) -> "${messageText}" [Bot: ${botUsername}]`);
-      return { success: true, data: res.data };
-    } catch (err) {
-      const kickMsg = err.response?.data?.status?.message || err.response?.data?.message || err.message;
-      const status = err.response?.status;
-      console.error(`❌ [MultiKick Mesaj Hatası] (${channelSlug}):`, status, kickMsg);
-      return {
-        success: false,
-        statusCode: status,
-        error: `Kick Hatası (${status || 'Ağ'}): ${kickMsg}`
-      };
+
+      console.log(`✅ [MultiKick Web v1 Başarılı] (${channelSlug}) -> "${messageText}" [Bot: ${botUsername}]`);
+      return { success: true, apiType: 'web-v1', data: v1Res.data };
+    } catch (err3) {
+      const s3 = err3.response?.status;
+      const m3 = err3.response?.data?.status?.message || err3.response?.data?.message || err3.message;
+      errors.push(`Web v1 (${s3 || 'Ağ'}): ${m3}`);
     }
+
+    // Tüm denemeler başarısız olduysa
+    console.error(`❌ [MultiKick Tüm Gönderme Yolları Başarısız] (${channelSlug}):`, errors.join(' | '));
+
+    let userFriendlyError = errors.join(' • ');
+    if (errors.some(e => e.includes('429'))) {
+      userFriendlyError = `Kick Hız Sınırı (429): Kick sunucuları isteği hız sınırına taktı. Lütfen Kick sohbetinize '/mod ${botUsername}' yazarak bota MODERATÖR yetkisi verin ve tokenınızı yenileyin.`;
+    } else if (errors.some(e => e.includes('401') || e.includes('403'))) {
+      userFriendlyError = `Kick Yetki Hatası (401/403): Token geçersiz veya süresi dolmuş. Lütfen yeni bir Kick token girip kaydedin.`;
+    }
+
+    return {
+      success: false,
+      error: userFriendlyError,
+      details: errors
+    };
   }
 }
 

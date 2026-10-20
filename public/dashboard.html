@@ -213,18 +213,39 @@
           <div class="space-y-4">
             <div class="space-y-1.5">
               <label class="text-xs font-bold text-slate-300">Özel Bot Kullanıcı Adı:</label>
-              <input type="text" id="input-custom-bot-username" placeholder="Örn: TolgaBot veya BenimKickBotum" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono">
+              <input type="text" id="input-custom-bot-username" oninput="updateModPreview()" placeholder="Örn: TolgaBot veya BenimKickBotum" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono">
+            </div>
+
+            <!-- MODERATÖR UYARISI (ÇOK ÖNEMLİ) -->
+            <div class="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-200 space-y-2">
+              <div class="font-extrabold flex items-center gap-2 text-white">
+                <i data-lucide="shield-alert" class="w-4 h-4 text-purple-400"></i>
+                <span>Kick Chat İzni (429 Hız Sınırına Takılmamak İçin Şart):</span>
+              </div>
+              <p class="text-[11px] text-slate-300 leading-relaxed">
+                Kick, botların sohbete mesaj yazabilmesi için bot hesabının kanalda <strong>MODERATÖR</strong> olmasını şart koşar. Aksi takdirde <em>"429 Too Many Requests"</em> hatası alırsınız.
+              </p>
+              <div class="flex items-center gap-2 bg-black/60 p-2.5 rounded-lg border border-white/10">
+                <span class="text-[11px] text-slate-400">Kendi Kick sohbetinize yazın:</span>
+                <code id="mod-cmd-preview" class="font-mono text-kick font-black text-xs select-all">/mod RoxenBot</code>
+              </div>
             </div>
 
             <div class="space-y-1.5">
-              <label class="text-xs font-bold text-slate-300">Bot Hesabının Session Token'ı (Bearer Token):</label>
-              <input type="password" id="input-custom-bot-token" placeholder="kat_..." class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono">
-              <p class="text-[11px] text-slate-400">Bot hesabınızla Kick'e giriş yapıp F12 ağ isteklerinden alacağınız `Authorization` tokenı.</p>
+              <label class="text-xs font-bold text-slate-300">Bot Hesabının Token'ı (Resmi Developer Token veya Session Token):</label>
+              <input type="password" id="input-custom-bot-token" placeholder="Bearer kat_... veya Kick OAuth Token" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono">
+              <p class="text-[11px] text-slate-400">Kick Developer Portal'dan aldığınız token veya F12 Network sekmesindeki <code>Authorization</code> / Cookie tokenınız.</p>
             </div>
 
-            <button onclick="saveCustomBotSettings()" class="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs transition shadow-md shadow-purple-600/20">
-              Bot Ayarlarını Kaydet
-            </button>
+            <div class="flex items-center gap-3 pt-2">
+              <button onclick="saveCustomBotSettings()" class="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs transition shadow-md shadow-purple-600/20">
+                Bot Ayarlarını Kaydet
+              </button>
+              <button onclick="sendTestChatMessage()" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold text-xs transition flex items-center gap-2">
+                <i data-lucide="send" class="w-3.5 h-3.5 text-kick"></i>
+                <span>Sohbete Test Mesajı At</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>

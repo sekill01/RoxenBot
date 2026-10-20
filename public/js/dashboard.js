@@ -112,6 +112,8 @@ function renderCustomBotSection() {
     tokenIn.value = currentUser.customBot?.botToken || '';
   }
 
+  updateModPreview();
+
   if (activeName) {
     if (isPro && currentUser.customBot?.enabled && currentUser.customBot?.botUsername) {
       activeName.innerText = currentUser.customBot.botUsername + ' (Özel Bot)';
@@ -246,6 +248,15 @@ async function saveGeminiSettings() {
   }
 }
 
+function updateModPreview() {
+  const userIn = document.getElementById('input-custom-bot-username');
+  const modPreview = document.getElementById('mod-cmd-preview');
+  const name = userIn?.value?.trim() || 'RoxenBot';
+  if (modPreview) {
+    modPreview.innerText = `/mod ${name}`;
+  }
+}
+
 async function sendTestChatMessage() {
   const btn = document.getElementById('btn-send-test-msg');
   if (btn) btn.disabled = true;
@@ -259,9 +270,10 @@ async function sendTestChatMessage() {
     }).then(r => r.json());
 
     if (res && res.success) {
-      showToast('🎉 Harika! Test mesajı Kick sohbetinize başarıyla gönderildi!', 'success');
+      const method = res.apiType === 'official' ? ' (Resmi Public API)' : res.apiType ? ` (${res.apiType})` : '';
+      showToast(`🎉 Harika! Test mesajı Kick sohbetinize başarıyla gönderildi!${method}`, 'success');
     } else {
-      showToast(res?.error || 'Mesaj gönderilemedi. Token geçerliliğini kontrol edin.', 'error');
+      showToast(res?.error || 'Mesaj gönderilemedi. Token geçerliliğini ve /mod yetkisini kontrol edin.', 'error');
     }
   } catch (err) {
     showToast('Hata: ' + err.message, 'error');
