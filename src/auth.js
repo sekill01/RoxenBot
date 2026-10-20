@@ -61,18 +61,19 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function isAdmin(user) {
+const SUPER_ADMIN_EMAIL = 'mobiloyunlog@gmail.com';
+
+function isSuperAdmin(user) {
   if (!user || !user.email) return false;
-  const adminEmails = ['mobiloyunlog@gmail.com', (process.env.ADMIN_EMAIL || '').toLowerCase().trim()].filter(Boolean);
-  return user.role === 'admin' || adminEmails.includes(user.email.toLowerCase().trim());
+  return user.email.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
 }
 
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
-    if (isAdmin(req.user)) {
+    if (isSuperAdmin(req.user)) {
       return next();
     }
-    return res.status(403).json({ success: false, error: 'Yetkisiz erişim. Bu alan sadece platform yöneticisine aittir.' });
+    return res.status(403).json({ success: false, error: 'Yetkisiz erişim. Bu alan sadece mobiloyunlog@gmail.com yöneticisine aittir.' });
   });
 }
 
@@ -125,7 +126,8 @@ module.exports = {
   verifySessionToken,
   requireAuth,
   requireAdmin,
-  isAdmin,
+  isAdmin: isSuperAdmin,
+  isSuperAdmin,
   handleDemoLogin,
   handleFirebaseLogin
 };

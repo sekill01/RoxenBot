@@ -20,6 +20,40 @@ multiKickManager.setSocketIO(io);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Süper Yönetici Sayfa Koruması (Sadece mobiloyunlog@gmail.com erişebilir)
+function requireSuperAdminPage(req, res, next) {
+  let token = null;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.slice(7).trim();
+  } else if (req.headers.cookie) {
+    const match = req.headers.cookie.match(/roxen_token=([^;]+)/);
+    if (match) token = match[1];
+  }
+
+  if (!token) {
+    return res.redirect('/login.html');
+  }
+
+  const payload = auth.verifySessionToken(token);
+  if (!payload) {
+    return res.redirect('/login.html');
+  }
+
+  const user = db.getUserById(payload.id);
+  if (!user || !auth.isSuperAdmin(user)) {
+    return res.redirect('/dashboard.html');
+  }
+
+  req.user = user;
+  next();
+}
+
+// Admin paneline doğrudan erişim kontrolü
+app.get(['/admin', '/admin.html'], requireSuperAdminPage, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =================== 1. AUTHENTICATION (GİRİŞ) ===================
@@ -230,11 +264,6 @@ app.post('/api/payment/simulate-pro', auth.requireAuth, (req, res) => {
 });
 
 // =================== 4. YÖNETİCİ (ADMIN) PANELİ API ===================
-
-// Admin Sayfası Yönlendirmeleri
-app.get(['/admin', '/admin.html'], (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
 
 // Admin İstatistikleri
 app.get('/api/admin/stats', auth.requireAdmin, (req, res) => {
