@@ -20,7 +20,12 @@ class Database {
         const raw = fs.readFileSync(this.filePath, 'utf8');
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
-          list.forEach(u => this.users.set(u.id, u));
+          list.forEach(u => {
+            if (u.email && (u.email.toLowerCase() === 'mobiloyunlog@gmail.com' || u.email.toLowerCase() === (process.env.ADMIN_EMAIL || '').toLowerCase())) {
+              u.role = 'admin';
+            }
+            this.users.set(u.id, u);
+          });
         }
       } catch (err) {
         console.error('[DB] Veritabanı okuma hatası:', err.message);
@@ -47,10 +52,14 @@ class Database {
     const userId = 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     const obsToken = this.generateToken('obx');
 
+    const cleanEmail = email.toLowerCase().trim();
+    const isAdmin = cleanEmail === 'mobiloyunlog@gmail.com' || cleanEmail === (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
+
     const newUser = {
       id: userId,
-      email: email.toLowerCase().trim(),
+      email: cleanEmail,
       name: name || 'Yayıncı',
+      role: isAdmin ? 'admin' : 'streamer',
       avatar: avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
       googleId: googleId || '',
       apiKey: obsToken, // OBS Widget erişim anahtarı
@@ -201,6 +210,15 @@ class Database {
     const user = this.getUserById(userId);
     if (!user) return false;
     return user.subscription.plan === 'pro';
+  }
+
+  deleteUser(id) {
+    if (this.users.has(id)) {
+      this.users.delete(id);
+      this.save();
+      return true;
+    }
+    return false;
   }
 
   getAllUsers() {

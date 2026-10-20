@@ -50,6 +50,12 @@
 
       <!-- Kullanıcı & Abonelik Bilgisi -->
       <div class="flex items-center gap-4">
+        <!-- Admin Paneli Butonu (Sadece Adminlere Görünür) -->
+        <a id="btn-admin-portal" href="/admin.html" class="hidden py-2 px-3.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-extrabold text-xs transition flex items-center gap-2 shadow-lg shadow-purple-500/10">
+          <i data-lucide="crown" class="w-3.5 h-3.5"></i>
+          <span>👑 Admin Paneli</span>
+        </a>
+
         <div class="text-right hidden sm:block">
           <div id="user-display-name" class="text-xs font-bold text-white">Yükleniyor...</div>
           <div id="user-plan-badge" class="text-[10px] font-black uppercase text-slate-400">Ücretsiz Plan</div>

@@ -139,7 +139,8 @@ app.get('/api/auth/me', auth.requireAuth, (req, res) => {
   res.json({
     success: true,
     user: req.user,
-    botRunning: isRunning
+    botRunning: isRunning,
+    isAdmin: auth.isAdmin(req.user)
   });
 });
 
@@ -229,6 +230,81 @@ app.post('/api/payment/simulate-pro', auth.requireAuth, (req, res) => {
     io.to('dashboard_' + req.user.id).emit('subscription_updated', result.subscription);
   }
   res.json(result);
+});
+
+// =================== 4. YÖNETİCİ (ADMIN) PANELİ API ===================
+
+// Admin İstatistikleri
+app.get('/api/admin/stats', auth.requireAdmin, (req, res) => {
+  const users = db.getAllUsers();
+  const totalUsers = users.length;
+  const proUsers = users.filter(u => u.subscription?.plan === 'pro').length;
+  const freeUsers = totalUsers - proUsers;
+  let activeBots = 0;
+  users.forEach(u => {
+    if (multiKickManager.isUserBotRunning(u.id)) activeBots++;
+  });
+
+  res.json({
+    success: true,
+    stats: {
+      totalUsers,
+      proUsers,
+      freeUsers,
+      activeBots
+    }
+  });
+});
+
+// Tüm Yayıncıları Listele
+app.get('/api/admin/users', auth.requireAdmin, (req, res) => {
+  const users = db.getAllUsers().map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatar,
+    role: u.role || 'streamer',
+    createdAt: u.createdAt,
+    subscription: u.subscription,
+    channelSlug: u.settings?.channelSlug || '',
+    isBotRunning: multiKickManager.isUserBotRunning(u.id),
+    customBot: {
+      botUsername: u.customBot?.botUsername || '',
+      enabled: Boolean(u.customBot?.enabled)
+    }
+  }));
+  res.json({ success: true, users });
+});
+
+// Kullanıcıya VIP PRO Ver / Planı Değiştir
+app.post('/api/admin/users/:id/subscription', auth.requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const { plan = 'pro', days = 30 } = req.body;
+
+  const targetUser = db.getUserById(id);
+  if (!targetUser) {
+    return res.status(404).json({ success: false, error: 'Kullanıcı bulunamadı.' });
+  }
+
+  const sub = db.setSubscription(id, { plan, days: Number(days) });
+
+  // Canlı Socket.IO ile kullanıcının ekranını anında güncelle
+  io.to('dashboard_' + id).emit('subscription_updated', sub);
+
+  console.log(`👑 [ADMIN] ${req.user.name} kullanıcısı ${targetUser.email} hesabını '${plan.toUpperCase()}' yaptı (${days} gün).`);
+  res.json({ success: true, user: targetUser, subscription: sub });
+});
+
+// Kullanıcıyı Sil
+app.delete('/api/admin/users/:id', auth.requireAdmin, (req, res) => {
+  const { id } = req.params;
+  if (id === req.user.id) {
+    return res.status(400).json({ success: false, error: 'Kendi yönetici hesabınızı silemezsiniz.' });
+  }
+
+  multiKickManager.stopUserBot(id);
+  const deleted = db.deleteUser(id);
+  res.json({ success: deleted });
 });
 
 // =================== 4. OBS CLOUD WIDGET'LARI ===================

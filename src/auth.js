@@ -61,6 +61,21 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function isAdmin(user) {
+  if (!user || !user.email) return false;
+  const adminEmails = ['mobiloyunlog@gmail.com', (process.env.ADMIN_EMAIL || '').toLowerCase().trim()].filter(Boolean);
+  return user.role === 'admin' || adminEmails.includes(user.email.toLowerCase().trim());
+}
+
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (isAdmin(req.user)) {
+      return next();
+    }
+    return res.status(403).json({ success: false, error: 'Yetkisiz erişim. Bu alan sadece platform yöneticisine aittir.' });
+  });
+}
+
 // Demo / Test Girişi (Google API kurulumu beklemeden hemen test etmek için)
 function handleDemoLogin(email = 'test@roxenbot.com', name = 'Tolga Yasin') {
   let user = db.getUserByEmail(email);
@@ -109,6 +124,8 @@ module.exports = {
   generateSessionToken,
   verifySessionToken,
   requireAuth,
+  requireAdmin,
+  isAdmin,
   handleDemoLogin,
   handleFirebaseLogin
 };

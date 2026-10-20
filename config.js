@@ -5,6 +5,7 @@ module.exports = {
   PORT: process.env.PORT || 3005,
   APP_URL: process.env.APP_URL || 'http://localhost:3005',
   JWT_SECRET: process.env.JWT_SECRET || 'roxen_cloud_super_secret_jwt_key_2026',
+  ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'mobiloyunlog@gmail.com',
 
   // Google OAuth Ayarları (Geleneksel ve GSI)
   GOOGLE: {

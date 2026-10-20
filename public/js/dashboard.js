@@ -25,6 +25,11 @@ async function initDashboard() {
     renderCommandsList();
     updateBotStatusUI(currentBotRunning);
 
+    if (res.isAdmin) {
+      const adminBtn = document.getElementById('btn-admin-portal');
+      if (adminBtn) adminBtn.classList.remove('hidden');
+    }
+
     // Socket.IO bağlantısı
     socket = io();
     socket.emit('join_dashboard', currentUser.id);
