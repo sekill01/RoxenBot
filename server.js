@@ -191,6 +191,67 @@ app.post('/api/user/settings', auth.requireAuth, (req, res) => {
   res.json({ success: true, user: updated });
 });
 
+// Ayarlar GET & POST (Musteri-Paketi Uyumluluğu)
+app.get('/api/settings', auth.requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    settings: {
+      channelSlug: req.user.settings?.channelSlug || '',
+      botUsername: req.user.customBot?.botUsername || '',
+      botToken: req.user.customBot?.botToken || '',
+      apiKey: req.user.apiKey || ''
+    }
+  });
+});
+
+app.post('/api/settings', auth.requireAuth, (req, res) => {
+  const { channelSlug, botUsername, botToken } = req.body;
+  const updates = {};
+  if (channelSlug !== undefined) {
+    updates.settings = { channelSlug: channelSlug.trim().toLowerCase() };
+  }
+  if (botUsername !== undefined || botToken !== undefined) {
+    updates.customBot = {
+      enabled: Boolean(botToken && botToken.trim()),
+      botUsername: (botUsername || '').trim(),
+      botToken: (botToken || '').trim()
+    };
+  }
+  const updated = db.updateUser(req.user.id, updates);
+  res.json({ success: true, settings: updated.settings, customBot: updated.customBot });
+});
+
+// Kanal Bağlantısı & Bot Başlat (Connect / Start)
+app.post(['/api/connect', '/api/bot/start'], auth.requireAuth, async (req, res) => {
+  const { channelSlug } = req.body;
+  if (channelSlug) {
+    db.updateUser(req.user.id, { settings: { channelSlug: channelSlug.trim().toLowerCase() } });
+  }
+  const result = await multiKickManager.startUserBot(req.user.id);
+  res.json(result);
+});
+
+// Kanal Bağlantısını Kes & Bot Durdur (Disconnect / Stop)
+app.post(['/api/disconnect', '/api/bot/stop'], auth.requireAuth, (req, res) => {
+  const stopped = multiKickManager.stopUserBot(req.user.id);
+  res.json({ success: stopped });
+});
+
+// Bot Bağlantı Durumu (Status)
+app.get(['/api/status', '/api/bot/status'], auth.requireAuth, (req, res) => {
+  const isConnected = multiKickManager.isUserBotRunning(req.user.id);
+  const worker = multiKickManager.activeWorkers.get(req.user.id);
+  res.json({
+    success: true,
+    isConnected,
+    running: isConnected,
+    channel: req.user.settings?.channelSlug || '',
+    viewerCount: worker?.channelData?.livestream?.viewer_count || 0,
+    followersCount: worker?.channelData?.followers_count || 0,
+    isLive: Boolean(worker?.channelData?.livestream)
+  });
+});
+
 // Özel Bot İsmi & Token
 app.post('/api/user/custom-bot', auth.requireAuth, (req, res) => {
   const user = req.user;
@@ -206,34 +267,237 @@ app.post('/api/user/custom-bot', auth.requireAuth, (req, res) => {
 });
 
 // Gemini AI Ayarları
-app.post('/api/user/gemini', auth.requireAuth, (req, res) => {
+app.get('/api/gemini/config', auth.requireAuth, (req, res) => {
+  res.json({ success: true, config: req.user.geminiAI || {} });
+});
+
+app.post(['/api/gemini/config', '/api/user/gemini'], auth.requireAuth, (req, res) => {
   const updated = db.updateUser(req.user.id, { geminiAI: req.body });
-  res.json({ success: true, geminiAI: updated.geminiAI });
+  res.json({ success: true, config: updated.geminiAI, geminiAI: updated.geminiAI });
 });
 
-// Komutlar
-app.post('/api/user/commands', auth.requireAuth, (req, res) => {
-  const updated = db.updateUser(req.user.id, { commands: req.body.commands || [] });
-  res.json({ success: true, commands: updated.commands });
+// Komutlar (Commands CRUD)
+app.get('/api/commands', auth.requireAuth, (req, res) => {
+  res.json({ success: true, commands: req.user.commands || [] });
 });
 
-// Botu Başlat
-app.post('/api/bot/start', auth.requireAuth, async (req, res) => {
-  const result = await multiKickManager.startUserBot(req.user.id);
-  res.json(result);
+app.post(['/api/commands', '/api/user/commands'], auth.requireAuth, (req, res) => {
+  if (Array.isArray(req.body.commands)) {
+    const updated = db.updateUser(req.user.id, { commands: req.body.commands });
+    return res.json({ success: true, commands: updated.commands });
+  }
+  const list = req.user.commands || [];
+  const newCmd = {
+    id: 'cmd_' + Date.now(),
+    name: req.body.name,
+    response: req.body.response,
+    cooldown: Number(req.body.cooldown) || 5,
+    permission: req.body.permission || 'everyone',
+    aliases: req.body.aliases || [],
+    enabled: req.body.enabled !== false
+  };
+  list.push(newCmd);
+  db.updateUser(req.user.id, { commands: list });
+  res.json({ success: true, command: newCmd, commands: list });
 });
 
-// Botu Durdur
-app.post('/api/bot/stop', auth.requireAuth, (req, res) => {
-  const stopped = multiKickManager.stopUserBot(req.user.id);
-  res.json({ success: stopped });
+app.put('/api/commands/:id', auth.requireAuth, (req, res) => {
+  const list = req.user.commands || [];
+  const idx = list.findIndex(c => c.id === req.params.id);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], ...req.body };
+    db.updateUser(req.user.id, { commands: list });
+    return res.json({ success: true, command: list[idx] });
+  }
+  res.status(404).json({ success: false, error: 'Komut bulunamadı' });
 });
 
-// Bot Durumu
-app.get('/api/bot/status', auth.requireAuth, (req, res) => {
-  const running = multiKickManager.isUserBotRunning(req.user.id);
-  res.json({ success: true, running });
+app.delete('/api/commands/:id', auth.requireAuth, (req, res) => {
+  let list = req.user.commands || [];
+  list = list.filter(c => c.id !== req.params.id);
+  db.updateUser(req.user.id, { commands: list });
+  res.json({ success: true, commands: list });
 });
+
+// Zamanlayıcılar (Timers CRUD)
+app.get('/api/timers', auth.requireAuth, (req, res) => {
+  res.json({ success: true, timers: req.user.timers || [] });
+});
+
+app.post(['/api/timers', '/api/user/timers'], auth.requireAuth, (req, res) => {
+  if (Array.isArray(req.body.timers)) {
+    const updated = db.updateUser(req.user.id, { timers: req.body.timers });
+    return res.json({ success: true, timers: updated.timers });
+  }
+  const list = req.user.timers || [];
+  const newTimer = {
+    id: 'tmr_' + Date.now(),
+    name: req.body.name || 'Zamanlayıcı',
+    message: req.body.message,
+    intervalMinutes: Number(req.body.intervalMinutes) || 15,
+    chatLines: Number(req.body.chatLines) || 0,
+    enabled: req.body.enabled !== false
+  };
+  list.push(newTimer);
+  db.updateUser(req.user.id, { timers: list });
+  res.json({ success: true, timer: newTimer, timers: list });
+});
+
+app.put('/api/timers/:id', auth.requireAuth, (req, res) => {
+  const list = req.user.timers || [];
+  const idx = list.findIndex(t => t.id === req.params.id);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], ...req.body };
+    db.updateUser(req.user.id, { timers: list });
+    return res.json({ success: true, timer: list[idx] });
+  }
+  res.status(404).json({ success: false, error: 'Zamanlayıcı bulunamadı' });
+});
+
+app.delete('/api/timers/:id', auth.requireAuth, (req, res) => {
+  let list = req.user.timers || [];
+  list = list.filter(t => t.id !== req.params.id);
+  db.updateUser(req.user.id, { timers: list });
+  res.json({ success: true, timers: list });
+});
+
+// Otomatik Yanıtlar (Auto Replies CRUD)
+app.get('/api/auto-replies', auth.requireAuth, (req, res) => {
+  res.json({ success: true, autoReplies: req.user.autoReplies || [] });
+});
+
+app.post(['/api/auto-replies', '/api/user/auto-replies'], auth.requireAuth, (req, res) => {
+  if (Array.isArray(req.body.autoReplies)) {
+    const updated = db.updateUser(req.user.id, { autoReplies: req.body.autoReplies });
+    return res.json({ success: true, autoReplies: updated.autoReplies });
+  }
+  const list = req.user.autoReplies || [];
+  const newReply = {
+    id: 'rep_' + Date.now(),
+    keywords: Array.isArray(req.body.keywords) ? req.body.keywords : (req.body.keywords || '').split(',').map(s => s.trim()),
+    response: req.body.response,
+    matchType: req.body.matchType || 'exact',
+    cooldown: Number(req.body.cooldown) || 5,
+    enabled: req.body.enabled !== false
+  };
+  list.push(newReply);
+  db.updateUser(req.user.id, { autoReplies: list });
+  res.json({ success: true, autoReply: newReply, autoReplies: list });
+});
+
+app.put('/api/auto-replies/:id', auth.requireAuth, (req, res) => {
+  const list = req.user.autoReplies || [];
+  const idx = list.findIndex(r => r.id === req.params.id);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], ...req.body };
+    db.updateUser(req.user.id, { autoReplies: list });
+    return res.json({ success: true, autoReply: list[idx] });
+  }
+  res.status(404).json({ success: false });
+});
+
+app.delete('/api/auto-replies/:id', auth.requireAuth, (req, res) => {
+  let list = req.user.autoReplies || [];
+  list = list.filter(r => r.id !== req.params.id);
+  db.updateUser(req.user.id, { autoReplies: list });
+  res.json({ success: true });
+});
+
+// Spam & Moderasyon
+app.get('/api/moderation', auth.requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    moderation: req.user.moderation || {
+      capsLimit: { enabled: true, maxPercentage: 70, minLength: 8 },
+      linkProtection: { enabled: true, permitMods: true, permitSubs: true },
+      bannedWords: { enabled: true, words: ['salak', 'küfür', 'aptal'] }
+    }
+  });
+});
+
+app.post('/api/moderation', auth.requireAuth, (req, res) => {
+  const updated = db.updateUser(req.user.id, { moderation: req.body });
+  res.json({ success: true, moderation: updated.moderation });
+});
+
+// 🌶️ Adanalı Modu Ayarları
+app.get('/api/adana', auth.requireAuth, (req, res) => {
+  res.json({ success: true, adanaMode: req.user.adanaMode || {} });
+});
+
+app.post(['/api/adana', '/api/user/adana'], auth.requireAuth, (req, res) => {
+  const updated = db.updateUser(req.user.id, { adanaMode: req.body });
+  res.json({ success: true, adanaMode: updated.adanaMode });
+});
+
+// Widget Ayarları
+app.get('/api/widgets', auth.requireAuth, (req, res) => {
+  res.json({ success: true, widgets: req.user.widgets || {} });
+});
+
+app.post(['/api/widgets', '/api/user/widgets'], auth.requireAuth, (req, res) => {
+  const updated = db.updateUser(req.user.id, { widgets: req.body });
+  res.json({ success: true, widgets: updated.widgets });
+});
+
+// Lisans & Abonelik Durumu
+app.get('/api/license/status', auth.requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    isLicensed: true,
+    license: {
+      type: req.user.subscription?.plan === 'pro' ? 'VIP PRO' : 'Ücretsiz',
+      owner: req.user.name,
+      expiresAt: req.user.subscription?.expiresAt || 'Süresiz'
+    }
+  });
+});
+
+// Canlı Sohbete Manuel Mesaj Yazma
+app.post('/api/chat/send', auth.requireAuth, async (req, res) => {
+  const { message } = req.body;
+  const user = req.user;
+  const channelSlug = user.settings?.channelSlug;
+  if (!channelSlug) return res.status(400).json({ success: false, error: 'Kanal adı tanımlı değil.' });
+
+  const token = multiKickManager.getActiveBotToken(user);
+  let chatroomId = null;
+  let channelId = null;
+  let broadcasterUserId = null;
+
+  const worker = multiKickManager.activeWorkers.get(user.id);
+  if (worker && worker.chatroomId) {
+    chatroomId = worker.chatroomId;
+    channelId = worker.channelId;
+    broadcasterUserId = worker.broadcasterUserId;
+  } else {
+    try {
+      const ch = await multiKickManager.fetchKickChannel(channelSlug);
+      chatroomId = ch.chatroom?.id || ch.id;
+      channelId = ch.id;
+      broadcasterUserId = ch.user_id || ch.id;
+    } catch (e) {
+      return res.status(400).json({ success: false, error: e.message });
+    }
+  }
+
+  const sendRes = await multiKickManager.sendKickMessageDirect({
+    channelSlug,
+    chatroomId,
+    channelId,
+    broadcasterUserId,
+    token,
+    messageText: message,
+    botUsername: multiKickManager.getActiveBotUsername(user)
+  });
+  res.json(sendRes);
+});
+
+// Sadakat, Çekiliş, Klipler, Discord Fallbacks
+app.get('/api/loyalty', auth.requireAuth, (req, res) => res.json({ success: true, config: { enabled: false } }));
+app.get('/api/giveaway', auth.requireAuth, (req, res) => res.json({ success: true, giveaway: { active: false, participants: [] } }));
+app.get('/api/highlights', auth.requireAuth, (req, res) => res.json({ success: true, highlights: [] }));
+app.get('/api/discord', auth.requireAuth, (req, res) => res.json({ success: true, config: { enabled: false } }));
 
 // Sohbete Test Mesajı Gönder (Token ve Bağlantı Doğrulama)
 app.post('/api/bot/send-test', auth.requireAuth, async (req, res) => {
@@ -427,16 +691,20 @@ app.get('/api/widget/data', (req, res) => {
 });
 
 // Widget Sayfaları
-app.get('/widget/alertbox', (req, res) => {
+app.get(['/widget/alertbox', '/widgets/alertbox'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'widgets', 'alertbox.html'));
 });
 
-app.get('/widget/chat', (req, res) => {
+app.get(['/widget/chat', '/widgets/chat'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'widgets', 'chat.html'));
 });
 
-app.get('/widget/goal', (req, res) => {
+app.get(['/widget/goal', '/widgets/goal'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'widgets', 'goal.html'));
+});
+
+app.get(['/widget/giveaway', '/widgets/giveaway'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'widgets', 'giveaway.html'));
 });
 
 // =================== 5. SOCKET.IO MULTI-TENANT ODALARI ===================

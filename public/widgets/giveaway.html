@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>RoxenBot - OBS Çekiliş (Giveaway) Widget</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: transparent;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif;
+    }
+
+    /* ÇEKİLİŞ KARTI */
+    #giveaway-box {
+      width: 460px;
+      background: rgba(10, 15, 29, 0.92);
+      border: 2px solid rgba(251, 191, 36, 0.6);
+      box-shadow: 0 0 35px rgba(251, 191, 36, 0.35);
+      border-radius: 20px;
+      padding: 22px 28px;
+      backdrop-filter: blur(16px);
+      text-align: center;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transform: scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #giveaway-box.visible {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #f87171;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      animation: pulse 1.8s infinite;
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+
+    .prize-title {
+      font-size: 22px;
+      font-weight: 900;
+      color: #fbbf24;
+      text-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+
+    .instruction-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .keyword-pill {
+      background: #53fc18;
+      color: #000000;
+      font-weight: 900;
+      font-size: 15px;
+      padding: 6px 14px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(83, 252, 24, 0.4);
+      letter-spacing: 0.5px;
+    }
+
+    .action-text {
+      font-size: 13px;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    .participants-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 5px 14px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    /* KAZANAN MODU */
+    #winner-box {
+      width: 520px;
+      background: radial-gradient(circle at center, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98));
+      border: 3px solid #53fc18;
+      box-shadow: 0 0 50px rgba(83, 252, 24, 0.6);
+      border-radius: 24px;
+      padding: 30px;
+      text-align: center;
+      transform: scale(0.7);
+      opacity: 0;
+      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: absolute;
+      pointer-events: none;
+    }
+
+    #winner-box.visible {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .winner-crown {
+      font-size: 44px;
+      margin-bottom: 6px;
+      animation: bounce 1.2s infinite alternate;
+    }
+
+    .winner-label {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+
+    .winner-name {
+      font-size: 32px;
+      font-weight: 900;
+      color: #53fc18;
+      text-shadow: 0 0 20px rgba(83, 252, 24, 0.8);
+      margin: 8px 0;
+      word-break: break-word;
+    }
+
+    .winner-prize {
+      font-size: 15px;
+      color: #fbbf24;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    @keyframes bounce {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-8px); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- AKTİF ÇEKİLİŞ KARTI -->
+  <div id="giveaway-box">
+    <div class="badge-live">
+      <span class="badge-dot"></span>
+      <span>Canlı Çekiliş</span>
+    </div>
+    <div class="prize-title" id="gw-prize">Steam Cüzdan Kodu</div>
+    <div class="instruction-row">
+      <span class="action-text">Katılmak için sohbete</span>
+      <span class="keyword-pill" id="gw-keyword">!katil</span>
+      <span class="action-text">yazın</span>
+    </div>
+    <div class="participants-count">
+      <span>👥 Katılımcı:</span>
+      <span id="gw-count" style="color: #53fc18;">0</span>
+    </div>
+  </div>
+
+  <!-- KAZANAN KARTI -->
+  <div id="winner-box">
+    <div class="winner-crown">👑</div>
+    <div class="winner-label">Çekiliş Kazananı</div>
+    <div class="winner-name" id="winner-username">Kullanıcı</div>
+    <div class="winner-prize" id="winner-prize-name">Ödül</div>
+  </div>
+
+  <!-- Ses Efekti -->
+  <audio id="win-sound" src="/sounds/alert_sub.mp3" preload="auto"></audio>
+
+  <script>
+    const socket = io();
+    const gwBox = document.getElementById('giveaway-box');
+    const winnerBox = document.getElementById('winner-box');
+    const prizeEl = document.getElementById('gw-prize');
+    const keyEl = document.getElementById('gw-keyword');
+    const countEl = document.getElementById('gw-count');
+
+    const winUserEl = document.getElementById('winner-username');
+    const winPrizeEl = document.getElementById('winner-prize-name');
+    const winAudio = document.getElementById('win-sound');
+
+    let winnerTimeout = null;
+
+    socket.on('init_state', (data) => {
+      if (data.giveaway) updateGiveawayUI(data.giveaway);
+    });
+
+    socket.on('giveaway_update', (data) => {
+      updateGiveawayUI(data);
+    });
+
+    socket.on('giveaway_winner', (winner) => {
+      showWinner(winner);
+    });
+
+    function updateGiveawayUI(gw) {
+      if (!gw || !gw.active) {
+        gwBox.classList.remove('visible');
+        return;
+      }
+      prizeEl.innerText = gw.prize || 'Ödül';
+      keyEl.innerText = gw.keyword || '!katil';
+      countEl.innerText = (gw.participants || []).length;
+      gwBox.classList.add('visible');
+    }
+
+    function showWinner(winner) {
+      if (!winner) return;
+
+      // Gizle aktif çekilişi
+      gwBox.classList.remove('visible');
+
+      winUserEl.innerText = '@' + winner.username;
+      winPrizeEl.innerText = 'Ödül: ' + (winner.prize || 'Hediye');
+
+      winnerBox.classList.add('visible');
+
+      // Ses çal
+      try {
+        winAudio.currentTime = 0;
+        winAudio.play().catch(() => {});
+      } catch (e) {}
+
+      // Konfeti patlat
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+        setTimeout(() => {
+          confetti({
+            particleCount: 80,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 }
+          });
+          confetti({
+            particleCount: 80,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 }
+          });
+        }, 400);
+      }
+
+      if (winnerTimeout) clearTimeout(winnerTimeout);
+      winnerTimeout = setTimeout(() => {
+        winnerBox.classList.remove('visible');
+      }, 14000);
+    }
+  </script>
+</body>
+</html>

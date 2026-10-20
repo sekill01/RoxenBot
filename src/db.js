@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const config = require('../config');
+const adanaQuotes = require('./adanaQuotes');
 
 class Database {
   constructor() {
@@ -138,6 +139,16 @@ class Database {
           current: 0,
           target: 100
         }
+      },
+
+      // 🌶️ ADANALI MODU (Kavga, Sataşma & Darlama)
+      adanaMode: {
+        enabled: true,
+        idleMinutes: 2,
+        banterChance: 40,
+        cooldownSec: 25,
+        funnyReplies: [...adanaQuotes.FUNNY_REPLIES],
+        idleReplies: [...adanaQuotes.IDLE_REPLIES]
       }
     };
 
@@ -147,7 +158,18 @@ class Database {
   }
 
   getUserById(id) {
-    return this.users.get(id) || null;
+    const user = this.users.get(id);
+    if (user && !user.adanaMode) {
+      user.adanaMode = {
+        enabled: true,
+        idleMinutes: 2,
+        banterChance: 40,
+        cooldownSec: 25,
+        funnyReplies: [...adanaQuotes.FUNNY_REPLIES],
+        idleReplies: [...adanaQuotes.IDLE_REPLIES]
+      };
+    }
+    return user || null;
   }
 
   getUserByEmail(email) {
@@ -176,6 +198,7 @@ class Database {
     if (updates.customBot) user.customBot = { ...user.customBot, ...updates.customBot };
     if (updates.geminiAI) user.geminiAI = { ...user.geminiAI, ...updates.geminiAI };
     if (updates.widgets) user.widgets = { ...user.widgets, ...updates.widgets };
+    if (updates.adanaMode) user.adanaMode = { ...user.adanaMode, ...updates.adanaMode };
     if (updates.commands) user.commands = updates.commands;
     if (updates.timers) user.timers = updates.timers;
     if (updates.autoReplies) user.autoReplies = updates.autoReplies;

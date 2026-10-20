@@ -78,6 +78,7 @@ class MultiKickManager {
     const worker = this.activeWorkers.get(userId);
     if (worker) {
       if (worker.pingInterval) clearInterval(worker.pingInterval);
+      if (worker.idleCheckInterval) clearInterval(worker.idleCheckInterval);
       if (worker.ws) {
         try { worker.ws.close(); } catch (e) {}
       }
@@ -189,6 +190,28 @@ class MultiKickManager {
             ws.send(JSON.stringify({ ping: {} }));
           }
         }, 20000);
+
+        // 🌶️ Adanalı Darlama (Idle) Kontrolü
+        worker.idleCheckInterval = setInterval(async () => {
+          const u = db.getUserById(worker.userId);
+          if (!u || !u.adanaMode?.enabled || !worker.lastChatUsers) return;
+          const idleMs = (Number(u.adanaMode.idleMinutes) || 2) * 60 * 1000;
+          const now = Date.now();
+
+          for (const [chatter, lastSeen] of Object.entries(worker.lastChatUsers)) {
+            if ((now - lastSeen) >= idleMs && (now - lastSeen) < (idleMs + 45000)) {
+              worker.lastChatUsers[chatter] = now;
+              const idleReplies = (u.adanaMode.idleReplies && u.adanaMode.idleReplies.length > 0)
+                ? u.adanaMode.idleReplies
+                : require('./adanaQuotes').IDLE_REPLIES;
+              const pick = idleReplies[Math.floor(Math.random() * idleReplies.length)];
+              const replyText = pick.replace(/{username}/g, chatter);
+              console.log(`🌶️ [Adanalı Darlama] '${chatter}' sessiz kaldı, darlanıyor...`);
+              await this.sendKickMessage(worker, u, replyText);
+              break;
+            }
+          }
+        }, 30000);
       });
 
       ws.on('message', (data) => {
@@ -209,6 +232,7 @@ class MultiKickManager {
       ws.on('close', () => {
         worker.connected = false;
         if (worker.pingInterval) clearInterval(worker.pingInterval);
+        if (worker.idleCheckInterval) clearInterval(worker.idleCheckInterval);
         if (this.activeWorkers.has(worker.userId)) {
           setTimeout(() => this.connectCentrifugo(worker), 5000);
         }
@@ -340,6 +364,10 @@ class MultiKickManager {
     const currentBotName = this.getActiveBotUsername(user).toLowerCase();
     if (username.toLowerCase() === currentBotName) return;
 
+    // İzleyicinin son konuşma zamanını kaydet (Adanalı darlama takibi için)
+    if (!worker.lastChatUsers) worker.lastChatUsers = {};
+    worker.lastChatUsers[username] = Date.now();
+
     // 1. Özel Komut Kontrolü (!dc, !oyun, !instagram vb.)
     const matchedCmd = (user.commands || []).find(c => c.enabled && lower === `!${c.name.toLowerCase()}`);
     if (matchedCmd) {
@@ -352,6 +380,26 @@ class MultiKickManager {
     if (matchedAuto) {
       await this.sendKickMessage(worker, user, matchedAuto.response);
       return;
+    }
+
+    // 3. 🌶️ ADANALI MODU (Espirili Sataşma / Kavga)
+    if (user.adanaMode?.enabled) {
+      const banterChance = Number(user.adanaMode.banterChance ?? 40);
+      const roll = Math.random() * 100;
+      if (roll <= banterChance) {
+        const now = Date.now();
+        const cooldown = (Number(user.adanaMode.cooldownSec) || 25) * 1000;
+        if (!worker.lastAdanaReply || (now - worker.lastAdanaReply) > cooldown) {
+          worker.lastAdanaReply = now;
+          const replies = (user.adanaMode.funnyReplies && user.adanaMode.funnyReplies.length > 0)
+            ? user.adanaMode.funnyReplies
+            : require('./adanaQuotes').FUNNY_REPLIES;
+          const pick = replies[Math.floor(Math.random() * replies.length)];
+          const replyText = pick.replace(/{username}/g, username);
+          await this.sendKickMessage(worker, user, replyText);
+          return;
+        }
+      }
     }
 
     // 3. Gemini AI Cevabı (Bot'a seslenildiğinde: "bot ...", "!ai", vb.)
