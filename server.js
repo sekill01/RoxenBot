@@ -234,6 +234,11 @@ app.post('/api/payment/simulate-pro', auth.requireAuth, (req, res) => {
 
 // =================== 4. YÖNETİCİ (ADMIN) PANELİ API ===================
 
+// Admin Sayfası Yönlendirmeleri
+app.get(['/admin', '/admin.html'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 // Admin İstatistikleri
 app.get('/api/admin/stats', auth.requireAdmin, (req, res) => {
   const users = db.getAllUsers();
