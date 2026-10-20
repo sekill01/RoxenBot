@@ -228,23 +228,34 @@ class MultiKickManager {
     if (data.id === 1 && data.connect) {
       worker.connected = true;
 
-      // Chat odasına abone ol
+      // 1. Chat v2 feed
       worker.ws.send(JSON.stringify({
-        subscribe: {
-          channel: `chatrooms.${worker.chatroomId}.v2`
-        },
+        subscribe: { channel: `chatrooms.${worker.chatroomId}.v2` },
         id: 2
       }));
 
-      // Kanal olaylarına abone ol (Takipçi, vb.)
+      // 2. Chat standart feed
       worker.ws.send(JSON.stringify({
-        subscribe: {
-          channel: `channel.${worker.channelId}`
-        },
+        subscribe: { channel: `chatrooms.${worker.chatroomId}` },
         id: 3
       }));
 
+      // 3. Kanal olayları feed
+      worker.ws.send(JSON.stringify({
+        subscribe: { channel: `channel.${worker.channelId}` },
+        id: 4
+      }));
+
       console.log(`🟢 [MultiKick Canlı] '${worker.channelSlug}' sohbet odasına abone olundu!`);
+
+      // Bağlandıktan 1.5 saniye sonra sohbete selam mesajı at
+      setTimeout(() => {
+        const u = db.getUserById(worker.userId);
+        if (u) {
+          this.sendKickMessage(worker, u, `🟢 RoxenBot başarıyla bağlandı! İyi yayınlar dilerim! 👋`);
+        }
+      }, 1500);
+
       return;
     }
 
@@ -387,15 +398,26 @@ class MultiKickManager {
 
   async sendKickMessage(worker, user, messageText) {
     const token = this.getActiveBotToken(user);
+    const res = await this.sendKickMessageDirect({
+      channelSlug: worker.channelSlug,
+      chatroomId: worker.chatroomId,
+      token,
+      messageText,
+      botUsername: this.getActiveBotUsername(user)
+    });
+    return res.success;
+  }
+
+  async sendKickMessageDirect({ channelSlug, chatroomId, token, messageText, botUsername = 'RoxenBot' }) {
     if (!token) {
-      console.warn(`[MultiKick] '${worker.channelSlug}' için bot token tanımlı değil, mesaj gönderilemedi.`);
-      return false;
+      console.warn(`[MultiKick] '${channelSlug}' için bot token tanımlı değil.`);
+      return { success: false, error: 'Bot token girilmemiş! Lütfen geçerli bir Kick Bot Token yapıştırın.' };
     }
 
     try {
       const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
-      await axios.post(
-        `https://kick.com/api/v2/messages/send/${worker.chatroomId}`,
+      const res = await axios.post(
+        `https://kick.com/api/v2/messages/send/${chatroomId}`,
         {
           content: messageText,
           type: 'message'
@@ -405,18 +427,24 @@ class MultiKickManager {
             'Authorization': `Bearer ${cleanToken}`,
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Referer': `https://kick.com/${worker.channelSlug}`,
+            'Referer': `https://kick.com/${channelSlug}`,
             'x-app-platform': 'web',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
           },
           timeout: 8000
         }
       );
-      console.log(`✅ [MultiKick Mesaj Gönderildi] (${worker.channelSlug}) -> "${messageText}" [Bot: ${this.getActiveBotUsername(user)}]`);
-      return true;
+      console.log(`✅ [MultiKick Mesaj Gönderildi] (${channelSlug}) -> "${messageText}" [Bot: ${botUsername}]`);
+      return { success: true, data: res.data };
     } catch (err) {
-      console.error(`❌ [MultiKick Mesaj Hatası] (${worker.channelSlug}):`, err.response?.data?.message || err.message);
-      return false;
+      const kickMsg = err.response?.data?.status?.message || err.response?.data?.message || err.message;
+      const status = err.response?.status;
+      console.error(`❌ [MultiKick Mesaj Hatası] (${channelSlug}):`, status, kickMsg);
+      return {
+        success: false,
+        statusCode: status,
+        error: `Kick Hatası (${status || 'Ağ'}): ${kickMsg}`
+      };
     }
   }
 }

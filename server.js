@@ -235,6 +235,46 @@ app.get('/api/bot/status', auth.requireAuth, (req, res) => {
   res.json({ success: true, running });
 });
 
+// Sohbete Test Mesajı Gönder (Token ve Bağlantı Doğrulama)
+app.post('/api/bot/send-test', auth.requireAuth, async (req, res) => {
+  const user = req.user;
+  const channelSlug = user.settings?.channelSlug;
+  if (!channelSlug) {
+    return res.status(400).json({ success: false, error: 'Lütfen önce Kick kanal adınızı girin ve kaydedin.' });
+  }
+
+  const token = multiKickManager.getActiveBotToken(user);
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      error: 'Bot Token girilmemiş! Lütfen "Özel Bot İsmi & Token" bölümünden geçerli bir Kick Bot Token yapıştırın.'
+    });
+  }
+
+  let chatroomId = null;
+  const worker = multiKickManager.activeWorkers.get(user.id);
+  if (worker && worker.chatroomId) {
+    chatroomId = worker.chatroomId;
+  } else {
+    try {
+      const ch = await multiKickManager.fetchKickChannel(channelSlug);
+      chatroomId = ch.chatroom?.id || ch.id;
+    } catch (e) {
+      return res.status(400).json({ success: false, error: 'Kanal bilgileri alınamadı: ' + e.message });
+    }
+  }
+
+  const result = await multiKickManager.sendKickMessageDirect({
+    channelSlug,
+    chatroomId,
+    token,
+    messageText: req.body.message || `🤖 [Test] RoxenBot sohbet bağlantısı başarılı!`,
+    botUsername: multiKickManager.getActiveBotUsername(user)
+  });
+
+  res.json(result);
+});
+
 // =================== 3. ÖDEME & ABONELİK (SHOPIER / PAYTR) ===================
 
 // Ödeme Emri Başlat

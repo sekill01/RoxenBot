@@ -246,6 +246,30 @@ async function saveGeminiSettings() {
   }
 }
 
+async function sendTestChatMessage() {
+  const btn = document.getElementById('btn-send-test-msg');
+  if (btn) btn.disabled = true;
+  showToast('Test mesajı Kick sohbetine gönderiliyor...', 'info');
+
+  try {
+    const res = await fetch('/api/bot/send-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '🤖 [Test] RoxenBot sohbet bağlantısı aktif ve çalışıyor! 👋' })
+    }).then(r => r.json());
+
+    if (res && res.success) {
+      showToast('🎉 Harika! Test mesajı Kick sohbetinize başarıyla gönderildi!', 'success');
+    } else {
+      showToast(res?.error || 'Mesaj gönderilemedi. Token geçerliliğini kontrol edin.', 'error');
+    }
+  } catch (err) {
+    showToast('Hata: ' + err.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function toggleBotExecution() {
   const btn = document.getElementById('btn-toggle-bot');
   const btnText = document.getElementById('btn-toggle-bot-text');

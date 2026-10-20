@@ -125,7 +125,12 @@
               <p class="text-xs text-slate-400 mt-1">Botunuzun bağlanacağı Kick yayın kanalını belirleyin.</p>
             </div>
             
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <button id="btn-send-test-msg" onclick="sendTestChatMessage()" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold text-xs transition flex items-center gap-2" title="Kick sohbetine deneme mesajı gönder">
+                <i data-lucide="send" class="w-3.5 h-3.5 text-kick"></i>
+                <span>Sohbete Test Mesajı At</span>
+              </button>
+
               <button id="btn-toggle-bot" onclick="toggleBotExecution()" class="px-6 py-2.5 rounded-xl bg-kick hover:bg-kick-hover text-black font-extrabold text-xs transition flex items-center gap-2 shadow-lg shadow-kick/20">
                 <i data-lucide="play" class="w-4 h-4 fill-current"></i>
                 <span id="btn-toggle-bot-text">Botu Başlat</span>
