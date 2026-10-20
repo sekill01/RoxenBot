@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoxenBot Cloud — Kick Yayıncıları İçin Yeni Nesil Bulut Bot & Widget Platformu</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #07090e; color: #f1f5f9; }
+    .neon-glow { text-shadow: 0 0 20px rgba(83, 252, 24, 0.4); }
+    .bg-gradient-glow { background: radial-gradient(circle at 50% 20%, rgba(83, 252, 24, 0.12), transparent 70%); }
+    .glass-card { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            kick: { DEFAULT: '#53fc18', hover: '#45db12' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-kick selection:text-black bg-gradient-glow">
+
+  <!-- ÜST NAVBAR -->
+  <header class="border-b border-white/5 sticky top-0 z-50 backdrop-blur-xl bg-[#07090e]/80">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-kick/10 border border-kick/30 flex items-center justify-center text-kick font-black text-xl shadow-lg shadow-kick/20">
+          R
+        </div>
+        <div>
+          <span class="text-xl font-black text-white tracking-tight">RoxenBot<span class="text-kick">.Cloud</span></span>
+          <span class="block text-[10px] text-slate-400 font-bold uppercase tracking-widest">Kick Streaming Suite</span>
+        </div>
+      </a>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-300">
+        <a href="#features" class="hover:text-kick transition">Özellikler</a>
+        <a href="#pricing" class="hover:text-kick transition">Paketler & Fiyatlar</a>
+        <a href="#custom-bot" class="hover:text-kick transition">Özel Bot İsmi</a>
+        <a href="/widgets/chat?token=demo" target="_blank" class="hover:text-kick transition flex items-center gap-1">OBS Widget Demo</a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <a href="/auth/demo" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs transition border border-white/10 flex items-center gap-2">
+          <span>Hızlı Giriş (Demo)</span>
+        </a>
+        <a href="/login.html" class="px-5 py-2.5 rounded-xl bg-kick hover:bg-kick-hover text-black font-extrabold text-xs transition shadow-lg shadow-kick/25 flex items-center gap-2">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span>Firebase ile Başla</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO SECTION -->
+  <main class="flex-1">
+    <section class="max-w-7xl mx-auto px-6 pt-20 pb-28 text-center relative">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-kick/10 border border-kick/30 text-kick text-xs font-bold uppercase tracking-wider mb-8">
+        <span class="w-2 h-2 rounded-full bg-kick animate-ping"></span>
+        <span>Bulut Tabanlı Kick SaaS Platformu — Kuruluma Gerek Yok!</span>
+      </div>
+
+      <h1 class="text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight max-w-4xl mx-auto leading-tight sm:leading-none">
+        Kick Yayınlarınızı <span class="text-kick neon-glow">Yapay Zeka</span> ve Özel Botla Büyütün.
+      </h1>
+
+      <p class="text-slate-400 text-base sm:text-xl max-w-2xl mx-auto mt-6 leading-relaxed">
+        Bilgisayarınıza hiçbir şey indirmeden; tek tıkla OBS bildirimleri, şeffaf sohbet kutusu, canlı mikrofon dinleyen Gemini AI ve <strong>kendi belirlediğiniz özel bot adı</strong> ile Kick chatinizi profesyonelleştirin.
+      </p>
+
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="/login.html" class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-kick hover:bg-kick-hover text-black font-black text-sm transition shadow-2xl shadow-kick/30 flex items-center justify-center gap-2.5">
+          <i data-lucide="sparkles" class="w-5 h-5"></i>
+          <span>Ücretsiz Botunu Oluştur</span>
+        </a>
+        <a href="/dashboard.html" class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-slate-900/80 hover:bg-slate-850 text-white font-bold text-sm transition border border-white/10 flex items-center justify-center gap-2">
+          <i data-lucide="layout-dashboard" class="w-5 h-5 text-slate-400"></i>
+          <span>Yayıncı Paneline Git</span>
+        </a>
+      </div>
+
+      <!-- OBS WIDGET ÖNİZLEME KARTI -->
+      <div class="mt-16 max-w-4xl mx-auto p-4 sm:p-6 rounded-3xl glass-card border border-white/10 shadow-2xl relative">
+        <div class="flex items-center justify-between pb-4 border-b border-white/5 text-xs text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-500/80"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500/80"></span>
+            <span class="ml-2 font-mono text-slate-400">OBS Browser Source Live Overlay</span>
+          </div>
+          <span class="px-2.5 py-1 rounded bg-kick/10 text-kick font-mono font-bold">1920x1080 Realtime</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 text-left">
+          <div class="p-5 rounded-2xl bg-black/40 border border-white/5 space-y-2">
+            <div class="text-xs font-bold text-kick uppercase tracking-wider flex items-center gap-1.5">
+              <i data-lucide="bell" class="w-4 h-4"></i> Alert Box (Bildirimler)
+            </div>
+            <p class="text-xs text-slate-300">Takip, abone, hediye abonelik bildirimleri canlı ses ve animasyonlarla OBS ekranınıza akar.</p>
+          </div>
+
+          <div class="p-5 rounded-2xl bg-black/40 border border-white/5 space-y-2">
+            <div class="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i data-lucide="message-square" class="w-4 h-4"></i> Şeffaf Chat Overlay
+            </div>
+            <p class="text-xs text-slate-300">Yayında donma yapmayan, Kick rozetlerini gösteren şık neon veya cam temalı sohbet kutusu.</p>
+          </div>
+
+          <div class="p-5 rounded-2xl bg-black/40 border border-white/5 space-y-2">
+            <div class="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i data-lucide="brain" class="w-4 h-4"></i> Gemini AI Canlı Asistan
+            </div>
+            <p class="text-xs text-slate-300">Yayıncının oynadığı oyunu ve mikrofondan söylediklerini algılayıp chate akıllı espriler yazar.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAKETLER VE FİYATLANDIRMA -->
+    <section id="pricing" class="py-24 border-t border-white/5 bg-[#090d16]/40">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="text-center max-w-2xl mx-auto space-y-3 mb-16">
+          <span class="text-xs font-bold text-kick uppercase tracking-widest">Şeffaf Fiyatlandırma</span>
+          <h2 class="text-3xl sm:text-4xl font-black text-white">Yayıncılığınıza Uygun Paketi Seçin</h2>
+          <p class="text-sm text-slate-400">Ücretsiz başlayın; kendi bot adınızı kullanmak ve yapay zekayı sınırsız yapmak istediğinizde VIP PRO'ya geçin.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          
+          <!-- 1. ÜCRETSİZ PAKET -->
+          <div class="p-8 rounded-3xl glass-card border border-white/10 space-y-6 flex flex-col justify-between">
+            <div class="space-y-4">
+              <div class="inline-block px-3 py-1 rounded-full bg-white/5 text-slate-300 text-xs font-bold">
+                Başlangıç Paketi
+              </div>
+              <h3 class="text-2xl font-black text-white">Standart Ücretsiz</h3>
+              <div class="text-4xl font-black text-white">0 ₺ <span class="text-sm text-slate-400 font-normal">/ ömür boyu</span></div>
+              <p class="text-xs text-slate-400">Yeni başlayan ve temel bot özelliklerine ihtiyaç duyan yayıncılar için idealdir.</p>
+              
+              <ul class="space-y-3 text-xs text-slate-300 pt-4 border-t border-white/5">
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-kick"></i> Standart RoxenBot ismiyle yanıt</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-kick"></i> OBS Alert Box (Takip, Abone)</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-kick"></i> Şeffaf Chat Overlay</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-kick"></i> Temel Özel Komutlar (!dc, !oyun)</li>
+                <li class="flex items-center gap-2 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i> Özel Bot İsmi (Kendi Hesabın)</li>
+                <li class="flex items-center gap-2 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i> Sınırsız Gemini AI Yanıtı</li>
+              </ul>
+            </div>
+
+            <a href="/auth/demo" class="w-full py-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs transition border border-white/10 text-center block">
+              Ücretsiz Başla
+            </a>
+          </div>
+
+          <!-- 2. VIP PRO PAKET -->
+          <div class="p-8 rounded-3xl bg-gradient-to-b from-purple-950/40 via-panel-card to-panel-card border-2 border-kick/40 space-y-6 flex flex-col justify-between relative shadow-2xl shadow-kick/10">
+            <div class="absolute -top-3.5 right-8 px-4 py-1 rounded-full bg-kick text-black text-xs font-extrabold shadow-lg shadow-kick/30 uppercase tracking-wider">
+              En Popüler
+            </div>
+
+            <div class="space-y-4">
+              <div class="inline-block px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold border border-purple-500/30">
+                ⭐ Tam Profesyonel
+              </div>
+              <h3 class="text-2xl font-black text-white">VIP PRO Lisansı</h3>
+              <div class="text-4xl font-black text-kick">99 ₺ <span class="text-sm text-slate-300 font-normal">/ ay</span></div>
+              <p class="text-xs text-slate-300">Kendi bot ismiyle yayın yapmak ve chati yapay zekayla coşturmak isteyen yayıncılar için.</p>
+
+              <ul class="space-y-3 text-xs text-slate-200 pt-4 border-t border-white/10">
+                <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-kick"></i> <strong>Özel Bot İsmi:</strong> Kendi belirlediğin bot hesabıyla yazma!</li>
+                <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-kick"></i> <strong>Sınırsız Gemini AI:</strong> Canlı mikrofon dinleme & anlık oyun esprileri</li>
+                <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-kick"></i> <strong>Sadakat & Mini Oyunlar:</strong> Puan Mağazası, !zar, !duello</li>
+                <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-kick"></i> <strong>Gelişmiş OBS Widget'ları:</strong> Çarkıfelek, Hedef Barı, Stream Ticker</li>
+                <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-kick"></i> <strong>Discord Gateway:</strong> Canlı yayın bildirimleri</li>
+                <li class="flex items-center gap-2"><i data-lucide="check-circle-2" class="w-4 h-4 text-kick"></i> Öncelikli 7/24 Destek</li>
+              </ul>
+            </div>
+
+            <a href="/auth/demo" class="w-full py-4 rounded-xl bg-kick hover:bg-kick-hover text-black font-black text-sm transition shadow-lg shadow-kick/25 text-center block">
+              VIP PRO'ya Yükselt
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ALT FOOTER -->
+  <footer class="border-t border-white/5 py-8 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p>© 2026 RoxenBot Cloud. Tüm hakları saklıdır. Tolga Yasin tarafından geliştirilmiştir.</p>
+      <div class="flex items-center gap-6">
+        <a href="/dashboard.html" class="hover:text-slate-300 transition">Yayıncı Paneli</a>
+        <a href="/pricing.html" class="hover:text-slate-300 transition">Fiyatlandırma</a>
+        <a href="https://kick.com" target="_blank" class="hover:text-kick transition">Kick.com</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>

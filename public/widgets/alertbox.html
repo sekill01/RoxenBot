@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>RoxenBot Cloud Alert Box</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: transparent;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    #alert-card {
+      opacity: 0;
+      transform: translateY(50px) scale(0.9);
+      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      background: rgba(12, 16, 25, 0.95);
+      border: 2px solid #53fc18;
+      box-shadow: 0 0 40px rgba(83, 252, 24, 0.35);
+      border-radius: 28px;
+      padding: 24px 36px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      color: white;
+      max-width: 600px;
+    }
+    #alert-card.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    .neon-text {
+      color: #53fc18;
+      text-shadow: 0 0 15px rgba(83, 252, 24, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="alert-card">
+    <div style="font-size: 40px;" id="alert-icon">⭐</div>
+    <div>
+      <div id="alert-title" class="neon-text" style="font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">YENİ TAKİPÇİ</div>
+      <div id="alert-message" style="font-size: 22px; font-weight: 800; margin-top: 4px;">TolgaYasin takip etti!</div>
+    </div>
+  </div>
+
+  <audio id="alert-sound" preload="auto"></audio>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (!token) {
+      document.body.innerHTML = '<div style="color:red; font-size:14px; background:rgba(0,0,0,0.8); padding:10px;">Token eksik.</div>';
+    } else {
+      const socket = io();
+      socket.emit('join_obs', token);
+
+      socket.on('alert', (data) => {
+        showAlert(data);
+      });
+    }
+
+    let alertQueue = [];
+    let isShowing = false;
+
+    function showAlert(data) {
+      alertQueue.push(data);
+      if (!isShowing) processQueue();
+    }
+
+    function processQueue() {
+      if (alertQueue.length === 0) {
+        isShowing = false;
+        return;
+      }
+
+      isShowing = true;
+      const item = alertQueue.shift();
+      const card = document.getElementById('alert-card');
+      const title = document.getElementById('alert-title');
+      const msg = document.getElementById('alert-message');
+      const icon = document.getElementById('alert-icon');
+
+      if (item.type === 'sub') {
+        title.innerText = 'YENİ ABONE!';
+        title.style.color = '#a855f7';
+        icon.innerText = '👑';
+        card.style.borderColor = '#a855f7';
+      } else {
+        title.innerText = 'YENİ TAKİPÇİ!';
+        title.style.color = '#53fc18';
+        icon.innerText = '⭐';
+        card.style.borderColor = '#53fc18';
+      }
+
+      msg.innerText = item.text || `${item.username} kanala katıldı!`;
+      card.classList.add('show');
+
+      setTimeout(() => {
+        card.classList.remove('show');
+        setTimeout(processQueue, 600);
+      }, 5500);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+===================================================================
+      ROXENBOT CLOUD — GOOGLE FIREBASE KURULUM KILAVUZU
+===================================================================
+
+Sitenize gelen yayıncıların Google hesaplarıyla doğrudan ve güvenli
+şekilde oturum açabilmeleri için Google Firebase entegrasyonu hazırlandı.
+
+Kendi Firebase anahtarlarınızı 2 dakikada ücretsiz almak için:
+
+-------------------------------------------------------------------
+ADIM 1: Firebase Konsolunda Proje Açın
+-------------------------------------------------------------------
+1. https://console.firebase.google.com adresine gidin ve Google hesabınızla giriş yapın.
+2. "Proje Ekle" (Add Project) butonuna tıklayın.
+3. Projenize bir ad verin (Örn: RoxenBot-Kick) ve projeyi oluşturun.
+
+-------------------------------------------------------------------
+ADIM 2: Google ile Giriş'i Etkinleştirin
+-------------------------------------------------------------------
+1. Sol menüdeki "Build" (Geliştir) sekmesinin altından "Authentication" seçeneğine tıklayın.
+2. "Get Started" (Başlayın) butonuna basın.
+3. Açılan listeden "Google" seçeneğini seçin.
+4. "Enable" (Etkinleştir) anahtarını açın, destek e-postanızı seçip "Kaydet"e basın.
+
+-------------------------------------------------------------------
+ADIM 3: Web Yapılandırma Bilgilerini Alın
+-------------------------------------------------------------------
+1. Sol üstteki Dişli (⚙️) simgesine -> "Proje Ayarları" (Project Settings) kısmına tıklayın.
+2. Sayfayı aşağı kaydırın, "Uygulamalarınız" bölümündeki Web ( </ > ) simgesine tıklayın.
+3. Bir takma ad yazın (Örn: Roxen Web) ve "Uygulamayı Kaydet"e basın.
+4. Karşınıza çıkan şu bilgileri kopyalayın:
+
+   apiKey: "AIzaSy..."
+   authDomain: "projeniz.firebaseapp.com"
+   projectId: "projeniz"
+   storageBucket: "projeniz.appspot.com"
+   messagingSenderId: "12345..."
+   appId: "1:12345:web:..."
+
+-------------------------------------------------------------------
+ADIM 4: RoxenBot-Cloud/.env Dosyasına Yapıştırın
+-------------------------------------------------------------------
+RoxenBot-Cloud klasöründeki ".env" (veya .env.example) dosyasını açıp
+bu değerleri doldurun:
+
+FIREBASE_API_KEY=AIzaSy...
+FIREBASE_AUTH_DOMAIN=projeniz.firebaseapp.com
+FIREBASE_PROJECT_ID=projeniz
+FIREBASE_STORAGE_BUCKET=projeniz.appspot.com
+FIREBASE_MESSAGING_SENDER_ID=12345...
+FIREBASE_APP_ID=1:12345:web:...
+
+-------------------------------------------------------------------
+TAMAMLANDI!
+-------------------------------------------------------------------
+Artık sitenizde (http://localhost:3005) "Google ile Giriş Yap" butonuna
+basıldığında Google penceresi açılacak, yayıncı Google ile onay verdiği an
+otomatik olarak yayıncı paneline aktarılacaktır!
+
+NOT: Bu bilgileri girene kadar sistem otomatik olarak "Hızlı Demo Girişi"
+modunda kesintisiz çalışmaya devam eder.
+===================================================================

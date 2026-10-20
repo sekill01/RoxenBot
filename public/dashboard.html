@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoxenBot Cloud — Yayıncı Kontrol Merkezi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #07090e; color: #f1f5f9; }
+    .panel-card { background: #0c1019; border: 1px solid rgba(255, 255, 255, 0.07); }
+    .nav-btn.active { background: rgba(83, 252, 24, 0.1); color: #53fc18; border-color: rgba(83, 252, 24, 0.3); }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            kick: { DEFAULT: '#53fc18', hover: '#45db12' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-kick selection:text-black">
+
+  <!-- ÜST HEADER -->
+  <header class="border-b border-white/5 sticky top-0 z-50 backdrop-blur-xl bg-[#07090e]/90">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <a href="/" class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-kick/10 border border-kick/30 flex items-center justify-center text-kick font-black text-xl shadow-lg shadow-kick/20">
+            R
+          </div>
+          <div>
+            <span class="text-lg font-black text-white tracking-tight">RoxenBot<span class="text-kick">.Cloud</span></span>
+            <span class="block text-[10px] text-slate-400 font-bold uppercase tracking-widest">Yayıncı Paneli</span>
+          </div>
+        </a>
+
+        <!-- Bot Durum Rozeti -->
+        <div id="header-bot-badge" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-white/10 text-xs font-bold text-slate-400">
+          <span id="header-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="header-status-text">Bot Kapalı</span>
+        </div>
+      </div>
+
+      <!-- Kullanıcı & Abonelik Bilgisi -->
+      <div class="flex items-center gap-4">
+        <div class="text-right hidden sm:block">
+          <div id="user-display-name" class="text-xs font-bold text-white">Yükleniyor...</div>
+          <div id="user-plan-badge" class="text-[10px] font-black uppercase text-slate-400">Ücretsiz Plan</div>
+        </div>
+
+        <img id="user-avatar-img" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80" alt="Avatar" class="w-9 h-9 rounded-xl border border-white/10 object-cover">
+
+        <button onclick="logout()" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition" title="Çıkış Yap">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ANA İÇERİK ALANI (2 SÜTUN) -->
+  <div class="max-w-7xl mx-auto px-6 py-8 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+    
+    <!-- SOL MENÜ & NAVİGASYON (3 SÜTUN) -->
+    <aside class="lg:col-span-3 space-y-4">
+      <div class="panel-card rounded-2xl p-4 space-y-1">
+        <button onclick="switchTab('overview')" id="tab-btn-overview" class="nav-btn active w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition text-left">
+          <i data-lucide="activity" class="w-4 h-4 text-kick"></i>
+          <span>Genel Bakış & Durum</span>
+        </button>
+        <button onclick="switchTab('custom-bot')" id="tab-btn-custom-bot" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition text-left text-slate-300 hover:text-white">
+          <div class="flex items-center gap-3">
+            <i data-lucide="bot" class="w-4 h-4 text-purple-400"></i>
+            <span>Özel Bot İsmi</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">VIP PRO</span>
+        </button>
+        <button onclick="switchTab('widgets')" id="tab-btn-widgets" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition text-left text-slate-300 hover:text-white">
+          <i data-lucide="layers" class="w-4 h-4 text-sky-400"></i>
+          <span>OBS Widget Linkleri</span>
+        </button>
+        <button onclick="switchTab('gemini')" id="tab-btn-gemini" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition text-left text-slate-300 hover:text-white">
+          <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+          <span>Gemini AI Asistanı</span>
+        </button>
+        <button onclick="switchTab('commands')" id="tab-btn-commands" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition text-left text-slate-300 hover:text-white">
+          <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
+          <span>Özel Komutlar</span>
+        </button>
+      </div>
+
+      <!-- VIP PRO YÜKSELTME KARTI -->
+      <div id="pro-upgrade-card" class="p-5 rounded-2xl bg-gradient-to-br from-purple-950/40 to-panel-card border border-purple-500/30 space-y-3">
+        <div class="flex items-center gap-2 text-purple-300 text-xs font-black uppercase tracking-wider">
+          <i data-lucide="crown" class="w-4 h-4 text-kick"></i> VIP PRO Üyeliği
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Kendi bot adınızla konuşun, sınırsız Gemini AI yanıtı alın ve tüm özel OBS temalarını açın.
+        </p>
+        <button onclick="simulateUpgradeToPro()" class="w-full py-2.5 rounded-xl bg-kick hover:bg-kick-hover text-black font-extrabold text-xs transition shadow-md shadow-kick/20 flex items-center justify-center gap-2">
+          <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+          <span>VIP PRO'ya Yükselt (Test)</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- SAĞ ANA PANEL (9 SÜTUN) -->
+    <main class="lg:col-span-9 space-y-6">
+
+      <!-- 1. GENEL BAKIŞ SEKMESİ -->
+      <section id="pane-overview" class="space-y-6">
+        <!-- Kick Kanal Bağlantı Kartı -->
+        <div class="panel-card rounded-2xl p-6 sm:p-8 space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-white/5 gap-4">
+            <div>
+              <h2 class="text-xl font-black text-white flex items-center gap-2">
+                <i data-lucide="tv" class="w-5 h-5 text-kick"></i> Kick Kanal Bağlantısı
+              </h2>
+              <p class="text-xs text-slate-400 mt-1">Botunuzun bağlanacağı Kick yayın kanalını belirleyin.</p>
+            </div>
+            
+            <div class="flex items-center gap-3">
+              <button id="btn-toggle-bot" onclick="toggleBotExecution()" class="px-6 py-2.5 rounded-xl bg-kick hover:bg-kick-hover text-black font-extrabold text-xs transition flex items-center gap-2 shadow-lg shadow-kick/20">
+                <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                <span id="btn-toggle-bot-text">Botu Başlat</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Kick Kanal Adınız (Username):</label>
+              <div class="flex gap-2">
+                <input type="text" id="input-channel-slug" placeholder="Örn: tolgayasin" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-kick font-mono">
+                <button onclick="saveChannelSettings()" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs transition">
+                  Kaydet
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Aktif Bot İsmi:</label>
+              <div class="p-2.5 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between text-xs">
+                <span id="display-active-bot-name" class="font-mono text-kick font-bold">RoxenBot (Standart)</span>
+                <span id="display-bot-type-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/5 text-slate-400">Ücretsiz</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hızlı Durum Kartları -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="panel-card rounded-2xl p-5 space-y-1">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Abonelik Durumu</span>
+            <div id="stat-sub-plan" class="text-lg font-black text-white">Standart Ücretsiz</div>
+            <span class="text-[11px] text-slate-400 block">Süresiz Erişim</span>
+          </div>
+
+          <div class="panel-card rounded-2xl p-5 space-y-1">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Canlı WebSocket</span>
+            <div id="stat-ws-status" class="text-lg font-black text-slate-400">Bağlı Değil</div>
+            <span class="text-[11px] text-slate-400 block">Centrifugo Chat & Events</span>
+          </div>
+
+          <div class="panel-card rounded-2xl p-5 space-y-1">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">OBS Widget Linkleri</span>
+            <div class="text-lg font-black text-sky-400">3 Aktif Link</div>
+            <span class="text-[11px] text-slate-400 block">Alert, Chat, Goal</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. ÖZEL BOT İSMİ SEKMESİ (VIP PRO) -->
+      <section id="pane-custom-bot" class="hidden space-y-6">
+        <div class="panel-card rounded-2xl p-6 sm:p-8 space-y-6">
+          <div class="pb-6 border-b border-white/5 flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-xl font-black text-white">⭐ Özel Bot İsmi Tanımlama</h2>
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">VIP PRO</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Kick chatinde standart RoxenBot yerine kendi açtığınız bot hesabınızın adıyla mesaj gönderin.</p>
+            </div>
+            
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggle-custom-bot-active" class="sr-only peer" onchange="saveCustomBotSettings()">
+              <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+            </label>
+          </div>
+
+          <!-- Kilitli Alan Uyarısı (Free Kullanıcılar İçin) -->
+          <div id="custom-bot-locked-banner" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between text-xs text-amber-200">
+            <div class="flex items-center gap-2.5">
+              <i data-lucide="lock" class="w-5 h-5 text-amber-400 flex-shrink-0"></i>
+              <span>Bu özellik <strong>VIP PRO</strong> paketine dahildir. Özel bot adınızı kullanmak için üyeliğinizi yükseltin.</span>
+            </div>
+            <button onclick="simulateUpgradeToPro()" class="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition">
+              Yükselt
+            </button>
+          </div>
+
+          <div class="space-y-4">
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Özel Bot Kullanıcı Adı:</label>
+              <input type="text" id="input-custom-bot-username" placeholder="Örn: TolgaBot veya BenimKickBotum" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono">
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Bot Hesabının Session Token'ı (Bearer Token):</label>
+              <input type="password" id="input-custom-bot-token" placeholder="kat_..." class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono">
+              <p class="text-[11px] text-slate-400">Bot hesabınızla Kick'e giriş yapıp F12 ağ isteklerinden alacağınız `Authorization` tokenı.</p>
+            </div>
+
+            <button onclick="saveCustomBotSettings()" class="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs transition shadow-md shadow-purple-600/20">
+              Bot Ayarlarını Kaydet
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. OBS WIDGET LİNKLERİ SEKMESİ -->
+      <section id="pane-widgets" class="hidden space-y-6">
+        <div class="panel-card rounded-2xl p-6 sm:p-8 space-y-6">
+          <div class="pb-6 border-b border-white/5">
+            <h2 class="text-xl font-black text-white flex items-center gap-2">
+              <i data-lucide="layers" class="w-5 h-5 text-sky-400"></i> OBS Tarayıcı Kaynağı (Browser Source) Linkleri
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">Bu linkleri OBS'e "Tarayıcı (Browser)" kaynağı olarak ekleyin. Boyutları 1920x1080 yapın.</p>
+          </div>
+
+          <div class="space-y-4">
+            <!-- Alertbox Link -->
+            <div class="p-4 rounded-xl bg-black/40 border border-white/10 space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-white flex items-center gap-1.5"><i data-lucide="bell" class="w-4 h-4 text-kick"></i> Alert Box (Takip, Abone Bildirimleri)</span>
+                <button onclick="copyWidgetUrl('alertbox')" class="text-kick hover:underline font-bold flex items-center gap-1"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Kopyala</button>
+              </div>
+              <input type="text" id="url-widget-alertbox" readonly class="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-slate-300">
+            </div>
+
+            <!-- Chat Overlay Link -->
+            <div class="p-4 rounded-xl bg-black/40 border border-white/10 space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-white flex items-center gap-1.5"><i data-lucide="message-square" class="w-4 h-4 text-sky-400"></i> Şeffaf Chat Overlay (Sohbet Ekranı)</span>
+                <button onclick="copyWidgetUrl('chat')" class="text-sky-400 hover:underline font-bold flex items-center gap-1"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Kopyala</button>
+              </div>
+              <input type="text" id="url-widget-chat" readonly class="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-slate-300">
+            </div>
+
+            <!-- Goal Bar Link -->
+            <div class="p-4 rounded-xl bg-black/40 border border-white/10 space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-white flex items-center gap-1.5"><i data-lucide="target" class="w-4 h-4 text-emerald-400"></i> Hedef Çubuğu (Goal Bar)</span>
+                <button onclick="copyWidgetUrl('goal')" class="text-emerald-400 hover:underline font-bold flex items-center gap-1"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Kopyala</button>
+              </div>
+              <input type="text" id="url-widget-goal" readonly class="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-slate-300">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. GEMINI AI ASİSTANI SEKMESİ -->
+      <section id="pane-gemini" class="hidden space-y-6">
+        <div class="panel-card rounded-2xl p-6 sm:p-8 space-y-6">
+          <div class="pb-6 border-b border-white/5 flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-black text-white flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-5 h-5 text-amber-400"></i> Google Gemini AI Sohbet Asistanı
+              </h2>
+              <p class="text-xs text-slate-400 mt-1">Yayıncının oynadığı oyunu ve söylediklerini takip eden canlı yapay zeka asistanı.</p>
+            </div>
+            
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggle-gemini-enabled" class="sr-only peer" onchange="saveGeminiSettings()">
+              <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+            </label>
+          </div>
+
+          <div class="space-y-4">
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Gemini API Anahtarı:</label>
+              <input type="password" id="input-gemini-key" placeholder="AIzaSy..." class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono">
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Gemini Modeli:</label>
+              <select id="select-gemini-model" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (En Hızlı & Kota Dostu - Tavsiye Edilen)</option>
+                <option value="gemini-flash-latest">⚡ Gemini Flash Latest</option>
+                <option value="gemini-2.5-pro">🧠 Gemini 2.5 Pro (Gelişmiş Muhakeme)</option>
+              </select>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-300">Bot Kişiliği & Prompt:</label>
+              <textarea id="textarea-gemini-personality" rows="3" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500 leading-relaxed"></textarea>
+            </div>
+
+            <button onclick="saveGeminiSettings()" class="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition shadow-md shadow-amber-500/20">
+              Gemini Ayarlarını Kaydet
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. ÖZEL KOMUTLAR SEKMESİ -->
+      <section id="pane-commands" class="hidden space-y-6">
+        <div class="panel-card rounded-2xl p-6 sm:p-8 space-y-6">
+          <div class="pb-6 border-b border-white/5 flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-black text-white flex items-center gap-2">
+                <i data-lucide="terminal" class="w-5 h-5 text-emerald-400"></i> Sohbet Komutları
+              </h2>
+              <p class="text-xs text-slate-400 mt-1">İzleyicilerin chate !dc, !instagram yazdığında botun vereceği cevaplar.</p>
+            </div>
+
+            <button onclick="addNewCommand()" class="px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition flex items-center gap-1.5">
+              <i data-lucide="plus" class="w-4 h-4"></i> Komut Ekle
+            </button>
+          </div>
+
+          <div id="commands-list-container" class="space-y-3">
+            <!-- Dinamik yüklenecek -->
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- TOAST BİLDİRİMİ -->
+  <div id="toast-box" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none px-5 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center gap-2.5"></div>
+
+  <script src="/js/dashboard.js"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>

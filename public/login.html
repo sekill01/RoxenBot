@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoxenBot Cloud — Firebase ile Giriş Yap</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase v10 SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <!-- Google Identity Services (GSI) SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #07090e; color: #f1f5f9; }
+    .glass-card { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .neon-border:focus { border-color: #53fc18; box-shadow: 0 0 15px rgba(83, 252, 24, 0.2); }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { kick: { DEFAULT: '#53fc18', hover: '#45db12' } }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6 selection:bg-kick selection:text-black">
+  <div class="w-full max-w-md glass-card rounded-3xl p-8 space-y-6 shadow-2xl relative">
+    
+    <!-- Başlık ve Logo -->
+    <div class="text-center space-y-2">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-kick/10 border border-kick/30 flex items-center justify-center text-kick font-black text-2xl shadow-lg shadow-kick/20">
+        R
+      </div>
+      <h1 class="text-2xl font-black text-white tracking-tight">RoxenBot<span class="text-kick">.Cloud</span></h1>
+      <div class="flex items-center justify-center gap-1.5 text-xs text-slate-400">
+        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span>Firebase Authentication Korumalı</span>
+      </div>
+    </div>
+
+    <!-- Hata / Bildirim Kutusu -->
+    <div id="auth-alert" class="hidden p-3.5 rounded-xl text-xs font-semibold"></div>
+
+    <!-- Giriş Butonları -->
+    <div class="space-y-3 pt-2">
+      <!-- 1. Google ile Giriş Yap (Firebase / GSI) -->
+      <div id="gsi-button-wrapper" class="flex justify-center w-full"></div>
+
+      <button type="button" id="btn-google-login" onclick="loginWithGoogleFirebase()" class="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs transition flex items-center justify-center gap-3 shadow-lg shadow-white/10 active:scale-[0.98]">
+        <svg class="w-4 h-4" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span id="btn-google-text">Google ile Giriş Yap</span>
+      </button>
+
+      <div class="relative flex items-center justify-center my-3">
+        <div class="border-t border-white/10 w-full"></div>
+        <span class="bg-[#0c1019] px-3 text-[10px] text-slate-500 uppercase tracking-widest absolute">veya</span>
+      </div>
+
+      <!-- 2. Hızlı Demo Girişi (Tek Tıkla Doğrudan Panel) -->
+      <a href="/auth/demo" class="w-full py-3.5 px-4 rounded-xl bg-kick/10 hover:bg-kick/20 border border-kick/30 text-kick font-extrabold text-xs transition flex items-center justify-center gap-2">
+        <i data-lucide="zap" class="w-4 h-4"></i>
+        <span>Hızlı Demo Girişi (Hesapsız Dene)</span>
+      </a>
+    </div>
+
+    <!-- Firebase Yapılandırma Bilgi Kartı -->
+    <div class="p-3.5 rounded-2xl bg-black/40 border border-white/5 space-y-2">
+      <div class="flex items-center justify-between text-[11px] text-slate-400">
+        <span class="flex items-center gap-1 font-bold text-slate-300">
+          <i data-lucide="settings" class="w-3.5 h-3.5 text-amber-400"></i> Firebase Durumu:
+        </span>
+        <span id="firebase-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">Kontrol Ediliyor</span>
+      </div>
+      <p id="firebase-help-text" class="text-[10px] text-slate-500 leading-relaxed">
+        Firebase API anahtarları `.env` dosyasından otomatik yüklenir. Anahtar girilmediğinde sistem demo moduyla da çalışır.
+      </p>
+    </div>
+
+    <div class="text-center pt-2">
+      <a href="/" class="text-xs text-slate-500 hover:text-slate-300 transition">← Ana Sayfaya Dön</a>
+    </div>
+  </div>
+
+  <script>
+    let isFirebaseReady = false;
+    let currentGoogleClientId = '';
+
+    // Google JWT Token Çözücü
+    function parseJwt(token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return JSON.parse(jsonPayload);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Google Identity Services (GSI) Yanıt İşleyici
+    async function handleGoogleGSIResponse(response) {
+      const btn = document.getElementById('btn-google-login');
+      const btnText = document.getElementById('btn-google-text');
+      if (btn) btn.disabled = true;
+      if (btnText) btnText.innerText = 'Google Oturumu Açılıyor...';
+
+      try {
+        const profile = parseJwt(response.credential);
+        if (!profile || !profile.email) {
+          showAuthError('Google profil bilgisi okunamadı.');
+          return;
+        }
+
+        const loginRes = await fetch('/api/auth/firebase-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: profile.sub,
+            email: profile.email,
+            name: profile.name || profile.given_name || 'Yayıncı',
+            avatar: profile.picture || ''
+          })
+        }).then(r => r.json());
+
+        if (loginRes && loginRes.success) {
+          window.location.href = '/dashboard.html';
+        } else {
+          showAuthError(loginRes?.error || 'Giriş tamamlanamadı.');
+        }
+      } catch (err) {
+        console.error('Google Auth Hatası:', err);
+        showAuthError('Giriş yapılırken hata oluştu: ' + err.message);
+      } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.innerText = 'Google ile Giriş Yap';
+      }
+    }
+
+    // 1. Sunucudan Konfigürasyonu Çek ve Başlat
+    async function initFirebaseAuth() {
+      try {
+        const res = await fetch('/api/config/firebase').then(r => r.json());
+        const badge = document.getElementById('firebase-status-badge');
+        const helpText = document.getElementById('firebase-help-text');
+        currentGoogleClientId = res?.googleClientId || '';
+
+        if (res && res.hasConfig && res.config.apiKey) {
+          firebase.initializeApp(res.config);
+          isFirebaseReady = true;
+
+          if (badge) {
+            badge.innerText = 'Firebase Aktif';
+            badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          }
+          if (helpText) {
+            helpText.innerText = 'Firebase Authentication başarıyla bağlandı. Google butonuna basarak doğrudan giriş yapabilirsiniz.';
+          }
+        } else if (currentGoogleClientId) {
+          if (badge) {
+            badge.innerText = 'Google Girişi Aktif';
+            badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          }
+          if (helpText) {
+            helpText.innerText = 'Google Client ID tanımlandı. Butona tıklayarak hesabınızla hemen giriş yapabilirsiniz.';
+          }
+
+          // Google GSI Butonunu Kur
+          const setupGSI = () => {
+            if (window.google && window.google.accounts) {
+              window.google.accounts.id.initialize({
+                client_id: currentGoogleClientId,
+                callback: handleGoogleGSIResponse
+              });
+              const gsiWrapper = document.getElementById('gsi-button-wrapper');
+              if (gsiWrapper) {
+                window.google.accounts.id.renderButton(gsiWrapper, {
+                  theme: 'outline',
+                  size: 'large',
+                  width: 380,
+                  text: 'continue_with',
+                  shape: 'pill'
+                });
+                // Resmi GSI butonu render edildiyse standart butonu gizleyebiliriz
+                const customBtn = document.getElementById('btn-google-login');
+                if (customBtn) customBtn.style.display = 'none';
+              }
+            } else {
+              setTimeout(setupGSI, 200);
+            }
+          };
+          setupGSI();
+        } else {
+          if (badge) {
+            badge.innerText = 'Demo Modu (Anahtar Bekleniyor)';
+            badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30';
+          }
+          if (helpText) {
+            helpText.innerHTML = 'Kendi Firebase / Google bilgilerinizi ekleyin veya <strong>"Hızlı Demo Girişi"</strong> ile hemen test edin.';
+          }
+        }
+      } catch (err) {
+        console.warn('Auth init warning:', err);
+      }
+    }
+
+    // 2. Butona Tıklandığında Giriş
+    async function loginWithGoogleFirebase() {
+      const btn = document.getElementById('btn-google-login');
+      const btnText = document.getElementById('btn-google-text');
+
+      if (isFirebaseReady) {
+        btn.disabled = true;
+        btnText.innerText = 'Google Açılıyor...';
+
+        try {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          provider.addScope('email');
+          provider.addScope('profile');
+
+          const result = await firebase.auth().signInWithPopup(provider);
+          const fbUser = result.user;
+
+          btnText.innerText = 'Oturum Açılıyor...';
+
+          const loginRes = await fetch('/api/auth/firebase-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: fbUser.uid,
+              email: fbUser.email,
+              name: fbUser.displayName || 'Yayıncı',
+              avatar: fbUser.photoURL || ''
+            })
+          }).then(r => r.json());
+
+          if (loginRes && loginRes.success) {
+            window.location.href = '/dashboard.html';
+          } else {
+            showAuthError(loginRes?.error || 'Giriş doğrulanamadı.');
+          }
+        } catch (err) {
+          console.error('Firebase Auth Hatası:', err);
+          if (err.code === 'auth/popup-closed-by-user') {
+            showAuthError('Giriş penceresi kapatıldı.');
+          } else {
+            showAuthError(err.message || 'Giriş yapılamadı.');
+          }
+        } finally {
+          btn.disabled = false;
+          btnText.innerText = 'Google ile Giriş Yap';
+        }
+        return;
+      }
+
+      if (currentGoogleClientId && window.google && window.google.accounts) {
+        window.google.accounts.id.prompt();
+        return;
+      }
+
+      // Henüz anahtar yoksa doğrudan Demo Girişi ile içeri al
+      window.location.href = '/auth/demo';
+    }
+
+    function showAuthError(msg) {
+      const alertBox = document.getElementById('auth-alert');
+      if (!alertBox) return;
+      alertBox.innerText = msg;
+      alertBox.className = 'p-3.5 rounded-xl text-xs font-semibold bg-red-500/10 border border-red-500/30 text-red-300 block';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initFirebaseAuth();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

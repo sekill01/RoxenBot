@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>RoxenBot Cloud Chat Overlay</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: transparent;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    #chat-stream {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 90vh;
+      overflow: hidden;
+    }
+    .chat-bubble {
+      background: rgba(12, 16, 25, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 10px 16px;
+      color: #f1f5f9;
+      font-size: 14px;
+      line-height: 1.5;
+      max-width: 480px;
+      animation: fadeIn 0.3s ease-out;
+      word-break: break-word;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .chat-username {
+      font-weight: 800;
+      margin-right: 8px;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="chat-stream"></div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const container = document.getElementById('chat-stream');
+
+    if (!token) {
+      document.body.innerHTML = '<div style="color:red; background:rgba(0,0,0,0.8); padding:8px;">Token parametresi eksik.</div>';
+    } else {
+      const socket = io();
+      socket.emit('join_obs', token);
+
+      socket.on('chat_message', (msg) => {
+        addMessage(msg);
+      });
+    }
+
+    function addMessage(msg) {
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble';
+
+      const userColor = msg.color || '#53fc18';
+      bubble.innerHTML = `
+        <span class="chat-username" style="color: ${userColor};">${escapeHtml(msg.username)}:</span>
+        <span class="chat-text">${escapeHtml(msg.content)}</span>
+      `;
+
+      container.appendChild(bubble);
+
+      // 30 saniye sonra yavaşça kaybol
+      setTimeout(() => {
+        bubble.style.transition = 'opacity 0.6s ease-out';
+        bubble.style.opacity = '0';
+        setTimeout(() => bubble.remove(), 600);
+      }, 30000);
+
+      // Maksimum 15 mesaj tut
+      while (container.children.length > 15) {
+        container.removeChild(container.firstChild);
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.innerText = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
