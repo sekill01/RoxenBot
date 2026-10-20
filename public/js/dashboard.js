@@ -12,8 +12,44 @@ let currentLicense = null;
 document.addEventListener('DOMContentLoaded', () => {
   lucide.createIcons();
   setupSocketListeners();
+  setupSlugSyncListeners();
   loadAllData();
 });
+
+// Kanal Adı Girişlerini İki Taraflı Otomatik Senkronize Et
+function setupSlugSyncListeners() {
+  const headerInput = document.getElementById('header-slug-input');
+  const settingInput = document.getElementById('setting-channel-slug');
+
+  const clean = (val) => String(val || '')
+    .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+    .replace(/^@/, '')
+    .replace(/[\/\?#].*$/, '')
+    .trim()
+    .toLowerCase();
+
+  if (headerInput && settingInput) {
+    headerInput.addEventListener('input', (e) => {
+      const c = clean(e.target.value);
+      if (settingInput.value !== c) settingInput.value = c;
+    });
+    headerInput.addEventListener('blur', (e) => {
+      const c = clean(e.target.value);
+      e.target.value = c;
+      settingInput.value = c;
+    });
+
+    settingInput.addEventListener('input', (e) => {
+      const c = clean(e.target.value);
+      if (headerInput.value !== c) headerInput.value = c;
+    });
+    settingInput.addEventListener('blur', (e) => {
+      const c = clean(e.target.value);
+      e.target.value = c;
+      headerInput.value = c;
+    });
+  }
+}
 
 // Toast Bildirimi Göster
 function showToast(message, type = 'success') {
@@ -310,9 +346,19 @@ async function loadAllData() {
     // 1. Ayarlar & Durum
     currentSettings = settingsRes.settings || {};
     if (currentSettings.channelSlug) {
-      document.getElementById('header-slug-input').value = currentSettings.channelSlug;
-      document.getElementById('setting-channel-slug').value = currentSettings.channelSlug;
-      document.getElementById('sidebar-channel-name').innerText = currentSettings.channelSlug;
+      const cleanSlug = String(currentSettings.channelSlug)
+        .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+        .replace(/^@/, '')
+        .replace(/[\/\?#].*$/, '')
+        .trim()
+        .toLowerCase();
+      currentSettings.channelSlug = cleanSlug;
+      const hIn = document.getElementById('header-slug-input');
+      const sIn = document.getElementById('setting-channel-slug');
+      const sideName = document.getElementById('sidebar-channel-name');
+      if (hIn) hIn.value = cleanSlug;
+      if (sIn) sIn.value = cleanSlug;
+      if (sideName) sideName.innerText = cleanSlug;
     }
     if (currentSettings.botToken) {
       document.getElementById('setting-bot-token').value = currentSettings.botToken;
@@ -375,13 +421,33 @@ async function loadAllData() {
 }
 
 // =================== KANAL BAĞLANTISI ===================
-async function handleConnectClick() {
-  const slugInput = document.getElementById('header-slug-input');
-  const slug = slugInput.value.trim();
+async function handleConnectClick(channelParam) {
+  const headerInput = document.getElementById('header-slug-input');
+  const settingInput = document.getElementById('setting-channel-slug');
+
+  let raw = (typeof channelParam === 'string' && channelParam.trim())
+    || (headerInput ? headerInput.value.trim() : '')
+    || (settingInput ? settingInput.value.trim() : '')
+    || (currentSettings?.channelSlug || '');
+
+  // Temizle: URL ve @ sembollerini ayıkla
+  const slug = String(raw)
+    .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+    .replace(/^@/, '')
+    .replace(/[\/\?#].*$/, '')
+    .trim()
+    .toLowerCase();
+
   if (!slug) {
     showToast('Lütfen bir Kick kanal adı girin', 'error');
     return;
   }
+
+  // Her iki alanı ve yan menüyü senkronize et
+  if (headerInput) headerInput.value = slug;
+  if (settingInput) settingInput.value = slug;
+  const sideName = document.getElementById('sidebar-channel-name');
+  if (sideName) sideName.innerText = slug;
 
   updateStatusUI('connecting', slug);
   try {
@@ -393,8 +459,9 @@ async function handleConnectClick() {
     const data = await res.json();
     if (data.success) {
       showToast(`'${slug}' kanalına bağlanılıyor...`, 'info');
+      currentSettings.channelSlug = slug;
     } else {
-      showToast(data.message || 'Bağlantı kurulamadı', 'error');
+      showToast(data.message || data.error || 'Bağlantı kurulamadı', 'error');
       updateStatusUI('disconnected');
     }
   } catch (e) {
@@ -1191,6 +1258,45 @@ function updateModPreview() {
 async function sendTestChatMessage() {
   const btn = document.getElementById('btn-header-test-msg');
   if (btn) btn.disabled = true;
+
+  // Formdaki güncel değerleri otomatik kaydet
+  const settingInput = document.getElementById('setting-channel-slug');
+  const headerInput = document.getElementById('header-slug-input');
+  const botUserInput = document.getElementById('setting-bot-username');
+  const botTokenInput = document.getElementById('setting-bot-token');
+
+  const rawSlug = (settingInput ? settingInput.value.trim() : '')
+    || (headerInput ? headerInput.value.trim() : '')
+    || (currentSettings?.channelSlug || '');
+
+  const slug = String(rawSlug)
+    .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+    .replace(/^@/, '')
+    .replace(/[\/\?#].*$/, '')
+    .trim()
+    .toLowerCase();
+
+  const botUsername = botUserInput?.value?.trim() || '';
+  const botToken = botTokenInput?.value?.trim() || '';
+
+  if (!slug) {
+    showToast('Lütfen önce Kick kanal adınızı girin', 'error');
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  // Ayarları otomatik güncelle
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelSlug: slug, botUsername, botToken })
+    });
+    currentSettings.channelSlug = slug;
+    if (settingInput) settingInput.value = slug;
+    if (headerInput) headerInput.value = slug;
+  } catch (_) {}
+
   showToast('Test mesajı Kick sohbetine gönderiliyor...', 'info');
 
   try {
@@ -1262,14 +1368,31 @@ async function sendManualChatMessage() {
 
 // =================== GENEL AYARLARI KAYDET ===================
 async function saveGeneralSettings() {
-  const slug = document.getElementById('setting-channel-slug').value.trim();
+  const settingInput = document.getElementById('setting-channel-slug');
+  const headerInput = document.getElementById('header-slug-input');
+
+  let rawSlug = (settingInput ? settingInput.value.trim() : '')
+    || (headerInput ? headerInput.value.trim() : '')
+    || (currentSettings?.channelSlug || '');
+
+  const slug = String(rawSlug)
+    .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+    .replace(/^@/, '')
+    .replace(/[\/\?#].*$/, '')
+    .trim()
+    .toLowerCase();
+
   const botUsername = document.getElementById('setting-bot-username')?.value?.trim() || '';
   const botToken = document.getElementById('setting-bot-token')?.value?.trim() || '';
 
   if (!slug) {
-    showToast('Lütfen kanal adınızı girin', 'error');
+    showToast('Lütfen bir Kick kanal adı girin', 'error');
     return;
   }
+
+  // Her iki kutuyu da senkronize et
+  if (settingInput) settingInput.value = slug;
+  if (headerInput) headerInput.value = slug;
 
   showToast('Ayarlar kaydediliyor ve bağlanılıyor...', 'info');
 
@@ -1282,7 +1405,10 @@ async function saveGeneralSettings() {
     const data = await res.json();
     if (data.success) {
       showToast('Ayarlar kaydedildi! Kanala bağlanılıyor...', 'success');
-      handleConnectClick();
+      currentSettings.channelSlug = slug;
+      await handleConnectClick(slug);
+    } else {
+      showToast(data.message || data.error || 'Ayarlar kaydedilemedi.', 'error');
     }
   } catch (e) {
     showToast('Ayarları kaydetme hatası: ' + e.message, 'error');

@@ -210,7 +210,13 @@ app.post('/api/settings', auth.requireAuth, (req, res) => {
   const { channelSlug, botUsername, botToken } = req.body;
   const updates = {};
   if (channelSlug !== undefined) {
-    updates.settings = { channelSlug: channelSlug.trim().toLowerCase() };
+    const clean = String(channelSlug)
+      .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+      .replace(/^@/, '')
+      .replace(/[\/\?#].*$/, '')
+      .trim()
+      .toLowerCase();
+    updates.settings = { channelSlug: clean };
   }
   if (botUsername !== undefined || botToken !== undefined) {
     updates.customBot = {
@@ -225,9 +231,20 @@ app.post('/api/settings', auth.requireAuth, (req, res) => {
 
 // Kanal Bağlantısı & Bot Başlat (Connect / Start)
 app.post(['/api/connect', '/api/bot/start'], auth.requireAuth, async (req, res) => {
-  const { channelSlug } = req.body;
+  let { channelSlug } = req.body;
+  if (!channelSlug && req.user.settings?.channelSlug) {
+    channelSlug = req.user.settings.channelSlug;
+  }
   if (channelSlug) {
-    db.updateUser(req.user.id, { settings: { channelSlug: channelSlug.trim().toLowerCase() } });
+    const clean = String(channelSlug)
+      .replace(/^https?:\/\/(www\.)?kick\.com\//i, '')
+      .replace(/^@/, '')
+      .replace(/[\/\?#].*$/, '')
+      .trim()
+      .toLowerCase();
+    db.updateUser(req.user.id, { settings: { channelSlug: clean } });
+  } else {
+    return res.status(400).json({ success: false, error: 'Lütfen bir Kick kanal adı girin.' });
   }
   const result = await multiKickManager.startUserBot(req.user.id);
   res.json(result);
