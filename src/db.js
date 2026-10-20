@@ -66,14 +66,14 @@ class Database {
       apiKey: obsToken, // OBS Widget erişim anahtarı
       createdAt: new Date().toISOString(),
 
-      // Abonelik Planı: Free veya Pro
+      // Abonelik Planı: Free veya Pro (Admin otomatik VIP PRO)
       subscription: {
-        plan: 'free', // 'free' veya 'pro'
+        plan: isAdmin ? 'pro' : 'free', // 'free' veya 'pro'
         status: 'active',
         startedAt: new Date().toISOString(),
-        expiresAt: null, // null = süresiz free, pro için bitiş tarihi
-        customBotAllowed: false,
-        aiRepliesLimit: 50
+        expiresAt: null, // null = süresiz
+        customBotAllowed: isAdmin,
+        aiRepliesLimit: isAdmin ? 999999 : 50
       },
 
       // Kick Kanal Ayarları
@@ -88,6 +88,33 @@ class Database {
         enabled: false,
         botUsername: '',
         botToken: ''
+      },
+
+      // Moderasyon & Spam Filtresi
+      moderation: {
+        capsProtection: {
+          enabled: true,
+          maxPercent: 70,
+          minLetters: 8,
+          action: 'warn',
+          warningMessage: '@{username} Lütfen büyük harf spamı yapmayınız!'
+        },
+        linkProtection: {
+          enabled: true,
+          permitMods: true,
+          action: 'warn',
+          warningMessage: '@{username} Sohbette link paylaşımı yasaktır!'
+        },
+        bannedWords: {
+          enabled: true,
+          words: ['oç', 'piç', 'sik', 'amk', 'aq', 'yarrak', 'orospu'],
+          action: 'warn',
+          warningMessage: '@{username} Lütfen sohbet kurallarına uygun kelimeler kullanınız!'
+        },
+        emoteLimit: {
+          enabled: false,
+          maxEmotes: 8
+        }
       },
 
       // Gemini AI Canlı Yayın Asistanı
@@ -179,6 +206,15 @@ class Database {
         enabled: false,
         webhookUrl: '',
         customMessage: '🌶️ Canlı Yayındayız Gardaş! Toplanın yerinizi alın, acılı kebaplar benden!'
+      },
+
+      // 🎵 Şarkı İstek (Song Request) Modülü
+      songRequest: {
+        enabled: true,
+        maxDurationMinutes: 8,
+        queue: [],
+        currentSong: null,
+        history: []
       }
     };
 
@@ -211,6 +247,17 @@ class Database {
       }
       if (!user.discord) {
         user.discord = { enabled: false, webhookUrl: '', customMessage: '🌶️ Canlı Yayındayız Gardaş!' };
+      }
+      if (!user.songRequest) {
+        user.songRequest = { enabled: true, maxDurationMinutes: 8, queue: [], currentSong: null, history: [] };
+      }
+      if (!user.moderation) {
+        user.moderation = {
+          capsProtection: { enabled: true, maxPercent: 70, minLetters: 8, action: 'warn', warningMessage: '@{username} Lütfen büyük harf spamı yapmayınız!' },
+          linkProtection: { enabled: true, permitMods: true, action: 'warn', warningMessage: '@{username} Sohbette link paylaşımı yasaktır!' },
+          bannedWords: { enabled: true, words: ['oç', 'piç', 'sik', 'amk', 'aq', 'yarrak', 'orospu'], action: 'warn', warningMessage: '@{username} Lütfen sohbet kurallarına uygun kelimeler kullanınız!' },
+          emoteLimit: { enabled: false, maxEmotes: 8 }
+        };
       }
     }
     return user || null;
@@ -247,6 +294,8 @@ class Database {
     if (updates.loyalty) user.loyalty = { ...user.loyalty, ...updates.loyalty };
     if (updates.highlights) user.highlights = updates.highlights;
     if (updates.discord) user.discord = { ...user.discord, ...updates.discord };
+    if (updates.songRequest) user.songRequest = { ...user.songRequest, ...updates.songRequest };
+    if (updates.moderation) user.moderation = { ...user.moderation, ...updates.moderation };
     if (updates.commands) user.commands = updates.commands;
     if (updates.timers) user.timers = updates.timers;
     if (updates.autoReplies) user.autoReplies = updates.autoReplies;
@@ -256,6 +305,69 @@ class Database {
     this.users.set(id, user);
     this.save();
     return user;
+  }
+
+  isVip(userId) {
+    const user = this.getUserById(userId);
+    if (!user) return false;
+    if (user.role === 'admin' || user.email === 'mobiloyunlog@gmail.com') return true;
+    return user.subscription?.plan === 'pro' || user.subscription?.plan === 'vip';
+  }
+
+  validateLicenseCode(code) {
+    if (!code || typeof code !== 'string') return null;
+    const clean = code.trim();
+
+    // 1. Tanımlı VIP PRO Promosyon Kodları
+    const staticVipCodes = {
+      'ROXEN-VIP-2026': { type: 'VIP PRO', days: 365 },
+      'ADANA01': { type: 'VIP PRO (01 Adana)', days: 365 },
+      'VIP-PRO-KICK': { type: 'VIP PRO', days: 180 },
+      'ROXEN-LIFETIME': { type: 'VIP PRO (Süresiz)', days: -1 },
+      'KICK-PRO-01': { type: 'VIP PRO', days: 90 },
+      'PRO-STREAMER': { type: 'VIP PRO', days: 60 }
+    };
+
+    if (staticVipCodes[clean.toUpperCase()]) {
+      return staticVipCodes[clean.toUpperCase()];
+    }
+
+    // 2. Base64 lisans anahtarı kontrolü (Müşteri paketi license.key)
+    try {
+      const decoded = Buffer.from(clean, 'base64').toString('utf8');
+      const parsed = JSON.parse(decoded);
+      if (parsed && (parsed.type?.includes('VIP') || parsed.client || parsed.hwid)) {
+        return {
+          type: parsed.type || 'VIP PRO',
+          days: parsed.expiresAt === 'lifetime' ? -1 : 365
+        };
+      }
+    } catch (_) {}
+
+    // 3. Format: ROXEN-XXXX-XXXX-XXXX
+    if (/^ROXEN-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(clean)) {
+      return { type: 'VIP PRO', days: 365 };
+    }
+
+    return null;
+  }
+
+  redeemLicense(userId, code) {
+    const user = this.getUserById(userId);
+    if (!user) return { success: false, error: 'Kullanıcı bulunamadı.' };
+
+    const licInfo = this.validateLicenseCode(code);
+    if (!licInfo) {
+      return { success: false, error: 'Geçersiz veya süresi dolmuş VIP lisans kodu. Doğru girdiğinizden emin olun.' };
+    }
+
+    this.setSubscription(userId, { plan: 'pro', days: licInfo.days });
+    return {
+      success: true,
+      message: `👑 Tebrikler! ${licInfo.type} lisansınız başarıyla aktif edildi! Tüm VIP özellikler açıldı.`,
+      plan: 'pro',
+      subscription: user.subscription
+    };
   }
 
   setSubscription(userId, { plan = 'pro', days = 30 }) {

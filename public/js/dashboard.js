@@ -77,6 +77,7 @@ function switchTab(tabId) {
     'auto-replies': { title: 'Otomatik Cevaplar', sub: 'Anahtar kelimelere anında verilen otomatik karşılıklar' },
     'moderation': { title: 'Spam & Moderasyon Koruması', sub: 'Sohbet kurallarını korumak için otomatik filtreler' },
     'adana': { title: '🌶️ Adanalı Modu (Kavga & Darlama)', sub: 'Adana şivesiyle espirili laf atma ve sessiz kalanları etiketleme motoru' },
+    'songs': { title: '🎵 Canlı Şarkı İstek (Song Request !sr)', sub: 'İzleyicilerin müzik sırası ve OBS canlı müzik bannerı' },
     'loyalty': { title: '🥤 Puan & Sadakat Sistemi', sub: 'İzleyicilerin yayında kalma süresine ve mesajlarına göre puan kazanma yönetimi' },
     'giveaway': { title: '🎁 Çekiliş Yönetim Merkezi', sub: 'OBS ekranında konfeti ve ses animasyonlu canlı kura çekimi' },
     'highlights': { title: '📌 Önemli Anlar & Klipler', sub: 'Yayın esnasında chate !klip yazılarak yakalanan vurgular ve Shorts zaman damgaları' },
@@ -91,6 +92,9 @@ function switchTab(tabId) {
   if (tabId === 'gemini-ai') {
     loadGeminiConfig();
   }
+  if (tabId === 'songs') {
+    loadSongRequestData();
+  }
 
   lucide.createIcons();
 }
@@ -99,6 +103,16 @@ function switchTab(tabId) {
 function setupSocketListeners() {
   socket.on('status_change', (data) => {
     updateStatusUI(data.status, data.channel);
+  });
+
+  socket.on('subscription_updated', (sub) => {
+    if (currentUser) currentUser.subscription = sub;
+    showToast('👑 VIP PRO Lisansınız Başarıyla Güncellendi!', 'success');
+    fetch('/api/license/status').then(r => r.json()).then(lic => applyLicenseUI(lic));
+  });
+
+  socket.on('song_update', (sr) => {
+    renderSongData(sr);
   });
 
   socket.on('channel_loaded', (data) => {
@@ -318,6 +332,12 @@ async function loadAllData() {
     if (urlChat) urlChat.innerText = `${baseUrl}/widget/chat?token=${apikey}`;
     const urlGoal = document.getElementById('url-goal-preview');
     if (urlGoal) urlGoal.innerText = `${baseUrl}/widget/goal?token=${apikey}`;
+    const urlGiveaway = document.getElementById('url-giveaway-preview');
+    if (urlGiveaway) urlGiveaway.innerText = `${baseUrl}/widget/giveaway?token=${apikey}`;
+    const urlSong = document.getElementById('url-song-preview');
+    if (urlSong) urlSong.innerText = `${baseUrl}/widget/song?token=${apikey}`;
+    const urlSongWidget = document.getElementById('url-song-preview-widget');
+    if (urlSongWidget) urlSongWidget.innerText = `${baseUrl}/widget/song?token=${apikey}`;
 
     if (statusRes.isConnected) {
       updateStatusUI('connected', currentSettings.channelSlug);
@@ -2085,7 +2105,36 @@ function applyLicenseUI(lic) {
   const hwidEl = document.getElementById('vip-user-hwid');
   if (hwidEl) hwidEl.innerText = hwid;
 
-  // 2. Header Lisans Rozeti
+  // 2. Header Lisans Rozeti & VIP Butonu
+  const headerPlanText = document.getElementById('header-plan-text');
+  const headerPlanBadge = document.getElementById('header-plan-badge');
+  const btnUpgradeVip = document.getElementById('btn-upgrade-vip');
+
+  if (headerPlanText && headerPlanBadge) {
+    if (isVip) {
+      headerPlanBadge.className = 'text-[10px] text-kick font-black uppercase tracking-wider flex items-center gap-1';
+      headerPlanText.innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-kick/10 border border-kick/40 text-kick font-black">⭐ VIP PRO</span>';
+      if (btnUpgradeVip) {
+        btnUpgradeVip.className = 'px-2.5 py-1.5 rounded-lg bg-kick/10 border border-kick/30 text-kick text-xs font-bold transition flex items-center gap-1';
+        btnUpgradeVip.innerHTML = '<i data-lucide="crown" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">VIP Aktif</span>';
+      }
+    } else {
+      headerPlanBadge.className = 'text-[10px] text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1';
+      headerPlanText.innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-bold">🆓 ÜCRETSİZ</span>';
+      if (btnUpgradeVip) {
+        btnUpgradeVip.className = 'px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-xs font-black transition flex items-center gap-1 shadow-md shadow-amber-500/20 animate-pulse';
+        btnUpgradeVip.innerHTML = '<i data-lucide="crown" class="w-3.5 h-3.5 fill-current"></i> <span class="hidden sm:inline">VIP\'ye Yükselt</span>';
+      }
+    }
+  }
+
+  // 2.1 Şarkı İstek VIP Banner Görünürlüğü
+  const songsVipBanner = document.getElementById('songs-vip-banner');
+  if (songsVipBanner) {
+    if (isVip) songsVipBanner.classList.add('hidden');
+    else songsVipBanner.classList.remove('hidden');
+  }
+
   const headerText = document.getElementById('header-license-text');
   const headerPill = document.getElementById('header-license-pill');
   if (headerPill && headerText) {
@@ -2799,5 +2848,250 @@ function clearGeminiLogs() {
   const container = document.getElementById('gemini-log-stream');
   if (container) {
     container.innerHTML = '<div class="text-center py-10 text-slate-500 text-xs font-sans">Günlük temizlendi.</div>';
+  }
+}
+
+// =================== ŞARKI İSTEK (SONG REQUEST) YÖNETİMİ ===================
+let currentSongData = { queue: [], currentSong: null, enabled: true };
+
+async function loadSongRequestData() {
+  try {
+    const res = await fetch('/api/song-request').then(r => r.json());
+    if (res.success && res.songRequest) {
+      renderSongData(res.songRequest);
+    }
+  } catch (err) {
+    console.error('[SongRequest] Veri yükleme hatası:', err);
+  }
+}
+
+function renderSongData(sr) {
+  currentSongData = sr || { queue: [], currentSong: null };
+
+  const currentTitleEl = document.getElementById('sr-current-title');
+  const currentUserEl = document.getElementById('sr-current-user');
+  const currentTimeEl = document.getElementById('sr-current-time');
+  const badgeEl = document.getElementById('song-active-badge');
+
+  if (currentSongData.currentSong) {
+    if (currentTitleEl) currentTitleEl.innerText = currentSongData.currentSong.title;
+    if (currentUserEl) currentUserEl.innerText = '@' + (currentSongData.currentSong.requestedBy || 'Yayıncı');
+    if (currentTimeEl) currentTimeEl.innerText = currentSongData.currentSong.time || '';
+    if (badgeEl) {
+      badgeEl.className = 'text-[10px] px-2 py-0.5 rounded font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      badgeEl.innerText = 'Çalıyor';
+    }
+  } else {
+    if (currentTitleEl) currentTitleEl.innerText = 'Şu an çalan parça yok';
+    if (currentUserEl) currentUserEl.innerText = '-';
+    if (currentTimeEl) currentTimeEl.innerText = '--:--';
+    if (badgeEl) {
+      badgeEl.className = 'text-[10px] px-2 py-0.5 rounded font-black uppercase tracking-wider bg-slate-800 text-slate-400';
+      badgeEl.innerText = 'Boşta';
+    }
+  }
+
+  const queueCountEl = document.getElementById('sr-queue-count');
+  if (queueCountEl) queueCountEl.innerText = (currentSongData.queue || []).length;
+
+  const tbody = document.getElementById('sr-queue-table-body');
+  if (!tbody) return;
+
+  if (!currentSongData.queue || currentSongData.queue.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-500">Henüz sırada bekleyen şarkı yok. !sr yazarak ekleyebilirsiniz.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = currentSongData.queue.map((song, idx) => `
+    <tr class="hover:bg-panel-bg/40 transition">
+      <td class="py-3 font-mono font-bold text-kick">${idx + 1}</td>
+      <td class="py-3 font-bold text-white max-w-[200px] truncate">${escapeHtml(song.title)}</td>
+      <td class="py-3 text-slate-300">@${escapeHtml(song.requestedBy)}</td>
+      <td class="py-3 text-slate-500 font-mono text-[11px]">${escapeHtml(song.time || '')}</td>
+      <td class="py-3 text-right">
+        <button onclick="removeSongFromQueue('${song.id}')" class="p-1.5 rounded-lg bg-panel-card hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition" title="Kuyruktan Çıkar">
+          <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+
+  lucide.createIcons();
+}
+
+async function addManualSong() {
+  const input = document.getElementById('sr-manual-input');
+  const title = input ? input.value.trim() : '';
+  if (!title) {
+    showToast('Lütfen bir şarkı adı veya linki girin', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/song-request/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title })
+    }).then(r => r.json());
+
+    if (res.success) {
+      showToast('Şarkı sıraya eklendi!', 'success');
+      input.value = '';
+      renderSongData(res.songRequest);
+    } else {
+      showToast(res.error || 'Şarkı eklenemedi', 'error');
+    }
+  } catch (err) {
+    showToast('Bağlantı hatası: ' + err.message, 'error');
+  }
+}
+
+async function playNextSong() {
+  try {
+    const res = await fetch('/api/song-request/play-next', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).then(r => r.json());
+
+    if (res.success) {
+      if (res.currentSong) {
+        showToast(`Sıradaki parça çalıyor: ${res.currentSong.title}`, 'success');
+      } else {
+        showToast('Sırada başka parça kalmadı', 'info');
+      }
+      renderSongData(res.songRequest);
+    }
+  } catch (err) {
+    showToast('Hata: ' + err.message, 'error');
+  }
+}
+
+async function clearSongQueue() {
+  if (!confirm('Tüm şarkı sırasını temizlemek istediğinize emin misiniz?')) return;
+  try {
+    const res = await fetch('/api/song-request/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).then(r => r.json());
+
+    if (res.success) {
+      showToast('Şarkı sırası temizlendi!', 'success');
+      renderSongData(res.songRequest);
+    }
+  } catch (err) {
+    showToast('Hata: ' + err.message, 'error');
+  }
+}
+
+async function removeSongFromQueue(id) {
+  try {
+    const res = await fetch('/api/song-request/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    }).then(r => r.json());
+
+    if (res.success) {
+      showToast('Şarkı kuyruktan kaldırıldı', 'success');
+      renderSongData(res.songRequest);
+    }
+  } catch (err) {
+    showToast('Hata: ' + err.message, 'error');
+  }
+}
+
+async function testSongWidget() {
+  try {
+    const res = await fetch('/api/test/song', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Müslüm Gürses - Affet', requestedBy: 'RoxenFan01' })
+    }).then(r => r.json());
+
+    if (res.success) {
+      showToast('OBS Müzik Bannerına test şarkısı gönderildi!', 'success');
+    }
+  } catch (err) {
+    showToast('Test hatası: ' + err.message, 'error');
+  }
+}
+
+// =================== VIP MODAL & LİSANS REDEEM ===================
+function openVipModal() {
+  const modal = document.getElementById('vip-upgrade-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const input = document.getElementById('modal-vip-code');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    const statusEl = document.getElementById('modal-vip-status');
+    if (statusEl) statusEl.classList.add('hidden');
+  }
+}
+
+function closeVipModal() {
+  const modal = document.getElementById('vip-upgrade-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitVipCode() {
+  const input = document.getElementById('modal-vip-code');
+  const code = input ? input.value.trim() : '';
+  const statusEl = document.getElementById('modal-vip-status');
+  const btn = document.getElementById('btn-submit-vip');
+
+  if (!code) {
+    if (statusEl) {
+      statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/30';
+      statusEl.innerText = 'Lütfen geçerli bir lisans veya promosyon kodu giriniz.';
+      statusEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Doğrulanıyor...';
+  }
+
+  try {
+    const res = await fetch('/api/license/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    }).then(r => r.json());
+
+    if (res.success) {
+      if (statusEl) {
+        statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        statusEl.innerText = res.message || 'Tebrikler! VIP PRO lisansınız aktif edildi!';
+        statusEl.classList.remove('hidden');
+      }
+      showToast('👑 VIP PRO Üyeliğiniz Aktif Edildi!', 'success');
+      setTimeout(() => {
+        closeVipModal();
+        window.location.reload();
+      }, 1500);
+    } else {
+      if (statusEl) {
+        statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/30';
+        statusEl.innerText = res.error || 'Lisans doğrulanamadı.';
+        statusEl.classList.remove('hidden');
+      }
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/30';
+      statusEl.innerText = 'Bağlantı hatası: ' + err.message;
+      statusEl.classList.remove('hidden');
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i> Lisansı Aktifleştir';
+      lucide.createIcons();
+    }
   }
 }

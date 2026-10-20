@@ -170,11 +170,13 @@ app.post('/api/auth/logout', (req, res) => {
 // E) Mevcut Kullanıcı Bilgisi
 app.get('/api/auth/me', auth.requireAuth, (req, res) => {
   const isRunning = multiKickManager.isUserBotRunning(req.user.id);
+  const isVip = db.isVip(req.user.id);
   res.json({
     success: true,
     user: req.user,
     botRunning: isRunning,
-    isAdmin: auth.isAdmin(req.user)
+    isAdmin: auth.isAdmin(req.user),
+    isVip: isVip
   });
 });
 
@@ -442,15 +444,38 @@ app.post(['/api/widgets', '/api/user/widgets'], auth.requireAuth, (req, res) => 
 
 // Lisans & Abonelik Durumu
 app.get('/api/license/status', auth.requireAuth, (req, res) => {
+  const isVip = db.isVip(req.user.id);
   res.json({
     success: true,
     isLicensed: true,
+    isVipPro: isVip,
+    plan: isVip ? 'pro' : 'free',
+    hwid: 'ROXEN-CLOUD-' + req.user.id.substring(0, 8).toUpperCase(),
     license: {
-      type: req.user.subscription?.plan === 'pro' ? 'VIP PRO' : 'Ücretsiz',
+      type: isVip ? '👑 VIP PRO' : '🆓 Standart (Ücretsiz)',
       owner: req.user.name,
-      expiresAt: req.user.subscription?.expiresAt || 'Süresiz'
+      expiresAt: req.user.subscription?.expiresAt || (isVip ? 'Süresiz' : 'Ücretsiz Plan')
     }
   });
+});
+
+// VIP PRO Lisans Kodu Aktive Etme (Redeem)
+app.post('/api/license/redeem', auth.requireAuth, (req, res) => {
+  const { code } = req.body;
+  if (!code || !code.trim()) {
+    return res.status(400).json({ success: false, error: 'Lütfen geçerli bir lisans veya promosyon kodu giriniz.' });
+  }
+
+  const result = db.redeemLicense(req.user.id, code);
+  if (!result.success) {
+    return res.status(400).json(result);
+  }
+
+  // Socket.IO ile dashboard'u ve OBS widget'larını anında güncelle
+  io.to('dashboard_' + req.user.id).emit('subscription_updated', result.subscription);
+
+  console.log(`👑 [VIP LİSANS] ${req.user.email} (${req.user.name}) VIP lisansı aktif etti! Kod: ${code.trim()}`);
+  res.json(result);
 });
 
 // Canlı Sohbete Manuel Mesaj Yazma
@@ -668,6 +693,97 @@ app.post('/api/discord/test', auth.requireAuth, async (req, res) => {
   }
 });
 
+// =================== 5. ŞARKI İSTEK (SONG REQUEST) MODÜLÜ ===================
+app.get('/api/song-request', auth.requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    songRequest: req.user.songRequest || { enabled: true, queue: [], currentSong: null }
+  });
+});
+
+app.post('/api/song-request/config', auth.requireAuth, (req, res) => {
+  const { enabled = true, maxDurationMinutes = 8 } = req.body;
+  const sr = req.user.songRequest || { queue: [], currentSong: null };
+  sr.enabled = Boolean(enabled);
+  sr.maxDurationMinutes = Number(maxDurationMinutes) || 8;
+  const updated = db.updateUser(req.user.id, { songRequest: sr });
+  res.json({ success: true, songRequest: updated.songRequest });
+});
+
+app.post('/api/song-request/add', auth.requireAuth, (req, res) => {
+  const { title } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ success: false, error: 'Şarkı adı veya linki girilmelidir.' });
+
+  const sr = req.user.songRequest || { queue: [], currentSong: null, enabled: true };
+  if (!sr.queue) sr.queue = [];
+
+  const newSong = {
+    id: 'sr_' + Date.now(),
+    title: title.trim(),
+    requestedBy: req.user.name || 'Yayıncı',
+    time: new Date().toLocaleTimeString('tr-TR')
+  };
+
+  if (!sr.currentSong) {
+    sr.currentSong = newSong;
+    if (io) io.to('obs_' + req.user.apiKey).emit('song_change', newSong);
+  } else {
+    sr.queue.push(newSong);
+  }
+
+  db.updateUser(req.user.id, { songRequest: sr });
+  if (io) io.to('dashboard_' + req.user.id).emit('song_update', sr);
+  res.json({ success: true, songRequest: sr, added: newSong });
+});
+
+app.post('/api/song-request/play-next', auth.requireAuth, (req, res) => {
+  const sr = req.user.songRequest || { queue: [], currentSong: null, enabled: true };
+  const nextSong = (sr.queue && sr.queue.length > 0) ? sr.queue.shift() : null;
+  sr.currentSong = nextSong;
+
+  db.updateUser(req.user.id, { songRequest: sr });
+  if (io) {
+    io.to('obs_' + req.user.apiKey).emit('song_change', nextSong);
+    io.to('dashboard_' + req.user.id).emit('song_update', sr);
+  }
+  res.json({ success: true, currentSong: nextSong, songRequest: sr });
+});
+
+app.post('/api/song-request/clear', auth.requireAuth, (req, res) => {
+  const sr = req.user.songRequest || { queue: [], currentSong: null, enabled: true };
+  sr.queue = [];
+  sr.currentSong = null;
+  db.updateUser(req.user.id, { songRequest: sr });
+  if (io) {
+    io.to('obs_' + req.user.apiKey).emit('song_change', null);
+    io.to('dashboard_' + req.user.id).emit('song_update', sr);
+  }
+  res.json({ success: true, songRequest: sr });
+});
+
+app.post('/api/song-request/remove', auth.requireAuth, (req, res) => {
+  const { id } = req.body;
+  const sr = req.user.songRequest || { queue: [], currentSong: null, enabled: true };
+  if (sr.queue) {
+    sr.queue = sr.queue.filter(s => s.id !== id);
+  }
+  db.updateUser(req.user.id, { songRequest: sr });
+  if (io) io.to('dashboard_' + req.user.id).emit('song_update', sr);
+  res.json({ success: true, songRequest: sr });
+});
+
+app.post('/api/test/song', auth.requireAuth, (req, res) => {
+  const mockSong = {
+    title: req.body.title || 'Müslüm Gürses - Nilüfer',
+    requestedBy: req.body.requestedBy || 'RoxenFan01',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=256&q=80'
+  };
+  if (io) {
+    io.to('obs_' + req.user.apiKey).emit('song_change', mockSong);
+  }
+  res.json({ success: true, message: 'OBS Müzik widgetına test şarkısı gönderildi!' });
+});
+
 // Sohbete Test Mesajı Gönder (Token ve Bağlantı Doğrulama)
 app.post('/api/bot/send-test', auth.requireAuth, async (req, res) => {
   const user = req.user;
@@ -855,7 +971,8 @@ app.get('/api/widget/data', (req, res) => {
     success: true,
     channelSlug: user.settings.channelSlug,
     widgets: user.widgets,
-    subscription: user.subscription.plan
+    subscription: user.subscription.plan,
+    songRequest: user.songRequest
   });
 });
 
@@ -874,6 +991,10 @@ app.get(['/widget/goal', '/widgets/goal'], (req, res) => {
 
 app.get(['/widget/giveaway', '/widgets/giveaway'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'widgets', 'giveaway.html'));
+});
+
+app.get(['/widget/song', '/widgets/song'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'widgets', 'song.html'));
 });
 
 // =================== 5. SOCKET.IO MULTI-TENANT ODALARI ===================

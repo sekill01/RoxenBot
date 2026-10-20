@@ -191,10 +191,10 @@ class MultiKickManager {
           }
         }, 20000);
 
-        // 🌶️ Adanalı Darlama (Idle) Kontrolü
+        // 🌶️ Adanalı Darlama (Idle) Kontrolü (VIP PRO)
         worker.idleCheckInterval = setInterval(async () => {
           const u = db.getUserById(worker.userId);
-          if (!u || !u.adanaMode?.enabled || !worker.lastChatUsers) return;
+          if (!u || !db.isVip(u.id) || !u.adanaMode?.enabled || !worker.lastChatUsers) return;
           const idleMs = (Number(u.adanaMode.idleMinutes) || 2) * 60 * 1000;
           const now = Date.now();
 
@@ -364,12 +364,132 @@ class MultiKickManager {
     const currentBotName = this.getActiveBotUsername(user).toLowerCase();
     if (username.toLowerCase() === currentBotName) return;
 
+    // 0. 🛡️ SPAM & MODERASYON KONTROLÜ (Tüm Kullanıcılar İçin Aktif)
+    if (user.moderation) {
+      // Yasaklı Kelime Filtresi
+      if (user.moderation.bannedWords?.enabled && Array.isArray(user.moderation.bannedWords.words)) {
+        const hasBanned = user.moderation.bannedWords.words.some(w => w && lower.includes(w.toLowerCase().trim()));
+        if (hasBanned) {
+          const warnMsg = (user.moderation.bannedWords.warningMessage || '@{username} Lütfen sohbet kurallarına uygun kelimeler kullanınız!').replace(/{username}/g, username);
+          await this.sendKickMessage(worker, user, warnMsg);
+          return;
+        }
+      }
+
+      // Link Paylaşım Koruması (Yayıncı hariç)
+      if (user.moderation.linkProtection?.enabled && username.toLowerCase() !== (user.settings?.channelSlug || '').toLowerCase()) {
+        const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9-]+\.(com|net|org|io|gg|tv|me|xyz|app|online)\b)/i;
+        if (linkRegex.test(text)) {
+          const warnMsg = (user.moderation.linkProtection.warningMessage || '@{username} Sohbette link paylaşımı yasaktır!').replace(/{username}/g, username);
+          await this.sendKickMessage(worker, user, warnMsg);
+          return;
+        }
+      }
+
+      // Büyük Harf (Caps) Koruması
+      if (user.moderation.capsProtection?.enabled) {
+        const minLetters = user.moderation.capsProtection.minLetters || 8;
+        const maxPercent = user.moderation.capsProtection.maxPercent || 70;
+        const letters = text.replace(/[^a-zA-ZçğıöşüÇĞİÖŞÜ]/g, '');
+        if (letters.length >= minLetters) {
+          const upperCount = (letters.match(/[A-ZÇĞİÖŞÜ]/g) || []).length;
+          const upperPercent = (upperCount / letters.length) * 100;
+          if (upperPercent >= maxPercent) {
+            const warnMsg = (user.moderation.capsProtection.warningMessage || '@{username} Lütfen büyük harf spamı yapmayınız!').replace(/{username}/g, username);
+            await this.sendKickMessage(worker, user, warnMsg);
+            return;
+          }
+        }
+      }
+    }
+
     // İzleyicinin son konuşma zamanını kaydet (Adanalı darlama takibi için)
     if (!worker.lastChatUsers) worker.lastChatUsers = {};
     worker.lastChatUsers[username] = Date.now();
 
-    // 🎁 Çekiliş Katılım Takibi
-    if (user.giveaway?.active && user.giveaway.keyword) {
+    // 👑 VIP PRO Yetki Kontrolü
+    const isVip = db.isVip(user.id);
+
+    // 🎵 1. ŞARKI İSTEK MODÜLÜ (!sr / !şarkı / !sırada / !skip) - [VIP ÖZELLİK]
+    if (lower.startsWith('!sr ') || lower.startsWith('!sarki ') || lower.startsWith('!şarkı ') || lower.startsWith('!song ') || lower.startsWith('!istek ')) {
+      if (!isVip) {
+        await this.sendKickMessage(worker, user, `⚠️ @${username} Şarkı İstek (!sr) özelliği VIP PRO yayıncılara özeldir kirvem! Detaylar: roxenbot.onrender.com`);
+        return;
+      }
+      if (user.songRequest?.enabled !== false) {
+        const query = text.replace(/^(!sr|!sarki|!şarkı|!song|!istek)\s+/i, '').trim();
+        if (query) {
+          if (!user.songRequest) user.songRequest = { enabled: true, queue: [], currentSong: null };
+          if (!user.songRequest.queue) user.songRequest.queue = [];
+
+          const newSong = {
+            id: 'sr_' + Date.now(),
+            title: query,
+            requestedBy: username,
+            time: new Date().toLocaleTimeString('tr-TR')
+          };
+
+          if (!user.songRequest.currentSong) {
+            user.songRequest.currentSong = newSong;
+            if (this.io) {
+              this.io.to('obs_' + user.apiKey).emit('song_change', newSong);
+            }
+          } else {
+            user.songRequest.queue.push(newSong);
+          }
+
+          db.updateUser(user.id, { songRequest: user.songRequest });
+          if (this.io) {
+            this.io.to('dashboard_' + user.id).emit('song_update', user.songRequest);
+          }
+
+          const pos = user.songRequest.currentSong?.id === newSong.id ? 'Şimdi Çalıyor!' : `Sıra: #${user.songRequest.queue.length}`;
+          await this.sendKickMessage(worker, user, `🎵 @${username}, "${query}" listeye eklendi! [${pos}] 🎶`);
+          return;
+        }
+      }
+    }
+
+    if (lower === '!şarkı' || lower === '!sarki' || lower === '!currentsong' || lower === '!song') {
+      if (user.songRequest?.currentSong) {
+        await this.sendKickMessage(worker, user, `🎶 Şu an çalan parça: "${user.songRequest.currentSong.title}" (İsteyen: @${user.songRequest.currentSong.requestedBy || 'Yayıncı'})`);
+      } else {
+        await this.sendKickMessage(worker, user, `🎶 Şu an çalan parça yok kirvem! !sr <şarkı adı> yaz sıraya ekleyelim!`);
+      }
+      return;
+    }
+
+    if (lower === '!sırada' || lower === '!sirada' || lower === '!queue') {
+      const queue = user.songRequest?.queue || [];
+      if (queue.length === 0) {
+        await this.sendKickMessage(worker, user, `🎶 Şarkı sırası boş gardaş! İlk parçayı sen ekle: !sr <şarkı adı>`);
+      } else {
+        const nextSongs = queue.slice(0, 3).map((s, idx) => `${idx + 1}. ${s.title} (@${s.requestedBy})`).join(' | ');
+        await this.sendKickMessage(worker, user, `🎶 Sırada bekleyenler: ${nextSongs} (Toplam: ${queue.length})`);
+      }
+      return;
+    }
+
+    if (lower === '!skip' || lower === '!geç' || lower === '!gec') {
+      if (isVip && user.songRequest) {
+        const next = (user.songRequest.queue && user.songRequest.queue.length > 0) ? user.songRequest.queue.shift() : null;
+        user.songRequest.currentSong = next;
+        db.updateUser(user.id, { songRequest: user.songRequest });
+        if (this.io) {
+          this.io.to('obs_' + user.apiKey).emit('song_change', next);
+          this.io.to('dashboard_' + user.id).emit('song_update', user.songRequest);
+        }
+        if (next) {
+          await this.sendKickMessage(worker, user, `⏭️ Şarkı geçildi! Şimdi çalan: "${next.title}" (İsteyen: @${next.requestedBy})`);
+        } else {
+          await this.sendKickMessage(worker, user, `⏭️ Şarkı geçildi! Sırada başka parça kalmadı kirvem.`);
+        }
+        return;
+      }
+    }
+
+    // 🎁 2. ÇEKİLİŞ KATILIM TAKİBİ - [VIP ÖZELLİK]
+    if (isVip && user.giveaway?.active && user.giveaway.keyword) {
       const kw = user.giveaway.keyword.toLowerCase().trim();
       if (lower === kw || lower.startsWith(kw + ' ')) {
         const parts = user.giveaway.participants || [];
@@ -385,8 +505,8 @@ class MultiKickManager {
       }
     }
 
-    // 🥤 Sadakat / Puan Sistemi Takibi & !puan Komutu
-    if (user.loyalty?.enabled) {
+    // 🥤 3. SADAKAT / PUAN SİSTEMİ & !puan - [VIP ÖZELLİK]
+    if (isVip && user.loyalty?.enabled) {
       if (!user.loyalty.users) user.loyalty.users = {};
       const addPts = Number(user.loyalty.bonusPerChat) || 5;
       user.loyalty.users[username] = (user.loyalty.users[username] || 0) + addPts;
@@ -400,8 +520,138 @@ class MultiKickManager {
       }
     }
 
-    // 📌 Klip / Önemli Anlar (!klip / !vurgu)
+    // 🎰 4. SLOT OYUNU (!slot [miktar])
+    if (lower === '!slot' || lower.startsWith('!slot ')) {
+      const emojis = ['🍒', '🍋', '🍇', '🔔', '💎', '🌶️'];
+      const r1 = emojis[Math.floor(Math.random() * emojis.length)];
+      const r2 = emojis[Math.floor(Math.random() * emojis.length)];
+      const r3 = emojis[Math.floor(Math.random() * emojis.length)];
+      const reelStr = `[ ${r1} | ${r2} | ${r3} ]`;
+
+      let bet = parseInt(text.split(' ')[1], 10);
+      const loyaltyActive = isVip && Boolean(user.loyalty?.enabled);
+      const userPoints = loyaltyActive ? (user.loyalty.users[username] || 0) : 0;
+      const ptsName = user.loyalty?.pointsName || 'Şalgam Puanı';
+
+      if (loyaltyActive && !isNaN(bet) && bet > 0) {
+        if (bet > userPoints) {
+          await this.sendKickMessage(worker, user, `⚠️ @${username} yeterli ${ptsName}'n yok kirvem! Mevcut bakiyen: ${userPoints}`);
+          return;
+        }
+      } else {
+        bet = 0;
+      }
+
+      if (r1 === r2 && r2 === r3) {
+        if (r1 === '🌶️') {
+          const win = bet > 0 ? bet * 10 : 500;
+          if (loyaltyActive) {
+            user.loyalty.users[username] = (user.loyalty.users[username] || 0) + win;
+            db.updateUser(user.id, { loyalty: user.loyalty });
+          }
+          await this.sendKickMessage(worker, user, `🎰 @${username} ${reelStr} 🔥🔥🔥 ADANA YANIYOR! JACKPOT! 10 KATINI KAZANDIN! (+${win} ${ptsName}) 👑🌶️`);
+        } else {
+          const win = bet > 0 ? bet * 4 : 200;
+          if (loyaltyActive) {
+            user.loyalty.users[username] = (user.loyalty.users[username] || 0) + win;
+            db.updateUser(user.id, { loyalty: user.loyalty });
+          }
+          await this.sendKickMessage(worker, user, `🎰 @${username} ${reelStr} 💥 TEBRİKLER! 3'ü bir arada vurdun! (+${win} ${ptsName}) 🎉`);
+        }
+      } else if (r1 === r2 || r2 === r3 || r1 === r3) {
+        const win = bet > 0 ? Math.floor(bet * 1.5) : 50;
+        if (loyaltyActive) {
+          user.loyalty.users[username] = (user.loyalty.users[username] || 0) + win;
+          db.updateUser(user.id, { loyalty: user.loyalty });
+        }
+        await this.sendKickMessage(worker, user, `🎰 @${username} ${reelStr} ✨ Fena değil kirvem! İki tanesi tuttu! (+${win} ${ptsName})`);
+      } else {
+        if (loyaltyActive && bet > 0) {
+          user.loyalty.users[username] = Math.max(0, userPoints - bet);
+          db.updateUser(user.id, { loyalty: user.loyalty });
+          await this.sendKickMessage(worker, user, `🎰 @${username} ${reelStr} 💀 Hayıflanma kirvem, bu el tutmadı! (-${bet} ${ptsName}) Acılı şalgam iç teselli bul!`);
+        } else {
+          await this.sendKickMessage(worker, user, `🎰 @${username} ${reelStr} Bu sefer şans gülmedi kirvem! Bir dahaki sefere kebap aşkına! 🌶️`);
+        }
+      }
+      return;
+    }
+
+    // 🎡 5. RULET OYUNU (!rulet <secim> <miktar>)
+    if (lower.startsWith('!rulet ') || lower.startsWith('!roulette ')) {
+      const parts = text.split(' ').filter(Boolean);
+      const choice = (parts[1] || '').toLowerCase();
+      const bet = parseInt(parts[2], 10);
+
+      const loyaltyActive = isVip && Boolean(user.loyalty?.enabled);
+      const userPoints = loyaltyActive ? (user.loyalty.users[username] || 0) : 0;
+      const ptsName = user.loyalty?.pointsName || 'Şalgam Puanı';
+
+      if (!choice || isNaN(bet) || bet <= 0) {
+        await this.sendKickMessage(worker, user, `🎡 @${username} Rulet Kullanımı: !rulet <kırmızı|siyah|01|sayı> <miktar> (Örn: !rulet kırmızı 50 veya !rulet 01 100)`);
+        return;
+      }
+
+      if (loyaltyActive && bet > userPoints) {
+        await this.sendKickMessage(worker, user, `⚠️ @${username} Rulet masasına oturacak kadar ${ptsName}'n yok! Bakiyen: ${userPoints}`);
+        return;
+      }
+
+      const rollNum = Math.floor(Math.random() * 37);
+      let rollColor = 'siyah';
+      if (rollNum === 0 || rollNum === 1) rollColor = '01';
+      else if ([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36].includes(rollNum)) rollColor = 'kırmızı';
+      else rollColor = 'siyah';
+
+      let won = false;
+      let multiplier = 2;
+
+      if ((choice === 'kırmızı' || choice === 'kirmizi' || choice === 'red') && rollColor === 'kırmızı') {
+        won = true;
+        multiplier = 2;
+      } else if ((choice === 'siyah' || choice === 'black') && rollColor === 'siyah') {
+        won = true;
+        multiplier = 2;
+      } else if ((choice === '01' || choice === 'yeşil' || choice === 'yesil' || choice === 'green') && (rollNum === 0 || rollNum === 1)) {
+        won = true;
+        multiplier = 14;
+      } else if (parseInt(choice, 10) === rollNum) {
+        won = true;
+        multiplier = 36;
+      }
+
+      if (won) {
+        const winAmount = bet * multiplier;
+        if (loyaltyActive) {
+          user.loyalty.users[username] = (userPoints - bet) + winAmount;
+          db.updateUser(user.id, { loyalty: user.loyalty });
+        }
+        await this.sendKickMessage(worker, user, `🎡 Rulet Çarkı Döndü: [ ${rollNum} ${rollColor.toUpperCase()} ] 💥 KAZANDIN @${username}! Tam ${multiplier}x vurdun! (+${winAmount} ${ptsName}) 👑`);
+      } else {
+        if (loyaltyActive) {
+          user.loyalty.users[username] = Math.max(0, userPoints - bet);
+          db.updateUser(user.id, { loyalty: user.loyalty });
+        }
+        await this.sendKickMessage(worker, user, `🎡 Rulet Çarkı Döndü: [ ${rollNum} ${rollColor.toUpperCase()} ] 💀 Kaybettin @${username}! (-${bet} ${ptsName}). Baraj gölüne karşı çay iç gardaş!`);
+      }
+      return;
+    }
+
+    // 📢 6. YAYINCI TANITIMI (!so / !shoutout)
+    if (lower.startsWith('!so ') || lower.startsWith('!shoutout ')) {
+      const target = text.replace(/^(!so|!shoutout)\s+/i, '').trim().replace(/^@/, '');
+      if (target) {
+        await this.sendKickMessage(worker, user, `📢 Gardaşlar toplanın! @${target} kral bir yayıncıdır, hemen takibe alın: https://kick.com/${target} 🚀 Kalitenin adresi!`);
+        return;
+      }
+    }
+
+    // 📌 7. KLİP / ÖNEMLİ ANLAR (!klip / !vurgu) - [VIP ÖZELLİK]
     if (lower === '!klip' || lower === '!vurgu' || lower.startsWith('!klip ') || lower.startsWith('!vurgu ')) {
+      if (!isVip) {
+        await this.sendKickMessage(worker, user, `⚠️ @${username} Önemli an kaydetme (!klip) özelliği VIP PRO üyelere özeldir!`);
+        return;
+      }
       const time = new Date().toLocaleTimeString('tr-TR');
       const note = text.replace(/^(!klip|!vurgu)\s*/i, '').trim() || 'Chat Vurgusu';
       const list = user.highlights || [];
@@ -415,7 +665,7 @@ class MultiKickManager {
       return;
     }
 
-    // 🎲 Mini Eğlence Oyunları (Adana Usulü)
+    // 🎲 8. STANDART MİNİ EĞLENCE OYUNLARI (Herkes İçin Açık)
     if (lower === '!zar') {
       const d1 = Math.floor(Math.random() * 6) + 1;
       const d2 = Math.floor(Math.random() * 6) + 1;
@@ -452,22 +702,41 @@ class MultiKickManager {
       return;
     }
 
-    // 1. Özel Komut Kontrolü (!dc, !oyun, !instagram vb.)
-    const matchedCmd = (user.commands || []).find(c => c.enabled && lower === `!${c.name.toLowerCase()}`);
+    // 9. ÖZEL KOMUTLAR (!dc, !oyun, !instagram vb.) - Değişken Desteği ile
+    const cmdTrigger = lower.split(' ')[0].replace(/^!/, '');
+    const matchedCmd = (user.commands || []).find(c => c.enabled && (
+      c.name.toLowerCase() === cmdTrigger ||
+      (Array.isArray(c.aliases) && c.aliases.map(a => a.toLowerCase()).includes(cmdTrigger))
+    ));
+
     if (matchedCmd) {
-      await this.sendKickMessage(worker, user, matchedCmd.response);
+      const args = text.split(' ').slice(1);
+      const targetUser = args[0] ? args[0].replace(/^@/, '') : username;
+      const rnd100 = Math.floor(Math.random() * 100) + 1;
+      const userPts = user.loyalty?.users ? (user.loyalty.users[username] || 0) : 0;
+
+      let resp = matchedCmd.response || '';
+      resp = resp.replace(/{user}/gi, username);
+      resp = resp.replace(/{username}/gi, username);
+      resp = resp.replace(/{touser}/gi, targetUser);
+      resp = resp.replace(/{target}/gi, targetUser);
+      resp = resp.replace(/{random\.1-100}/gi, rnd100);
+      resp = resp.replace(/{points}/gi, userPts);
+      resp = resp.replace(/{channel}/gi, user.settings?.channelSlug || '');
+
+      await this.sendKickMessage(worker, user, resp);
       return;
     }
 
-    // 2. Otomatik Yanıtlar (sa, selam, slm, merhaba)
+    // 10. OTOMATİK CEVAPLAR (sa, selam, slm, vb.)
     const matchedAuto = (user.autoReplies || []).find(r => r.enabled && r.keywords.some(k => lower === k.toLowerCase() || lower.startsWith(k.toLowerCase() + ' ')));
     if (matchedAuto) {
       await this.sendKickMessage(worker, user, matchedAuto.response);
       return;
     }
 
-    // 3. 🌶️ ADANALI MODU (Espirili Sataşma / Kavga)
-    if (user.adanaMode?.enabled) {
+    // 11. 🌶️ ADANALI MODU (Espirili Sataşma / Kavga) - [VIP ÖZELLİK]
+    if (isVip && user.adanaMode?.enabled) {
       const banterChance = Number(user.adanaMode.banterChance ?? 40);
       const roll = Math.random() * 100;
       if (roll <= banterChance) {
@@ -486,12 +755,16 @@ class MultiKickManager {
       }
     }
 
-    // 3. Gemini AI Cevabı (Bot'a seslenildiğinde: "bot ...", "!ai", vb.)
+    // 12. GEMINI AI CEVABI - [VIP ÖZELLİK]
     const isAiTrigger = lower.startsWith('!ai') ||
                         lower.startsWith('!gemini') ||
                         /\b(bot|roxen|roxenbot)\b/i.test(text);
 
     if (isAiTrigger && user.geminiAI?.enabled && user.geminiAI?.apiKey) {
+      if (!isVip) {
+        await this.sendKickMessage(worker, user, `🧠 @${username} Gemini AI Canlı Yayın Asistanı VIP PRO yayıncılara özeldir!`);
+        return;
+      }
       const cleanPrompt = text.replace(/^(!ai|!gemini)\s*/i, '').trim();
       const aiRes = await geminiEngine.generateReply({
         apiKey: user.geminiAI.apiKey,

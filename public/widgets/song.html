@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>RoxenBot - OBS Müzik & Song Request Widget</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: transparent;
+      margin: 0;
+      padding: 20px;
+      overflow: hidden;
+    }
+    .neon-border {
+      box-shadow: 0 0 20px rgba(83, 252, 24, 0.25), inset 0 0 15px rgba(83, 252, 24, 0.1);
+    }
+    @keyframes barAnim {
+      0%, 100% { height: 4px; }
+      50% { height: 18px; }
+    }
+    .equalizer-bar {
+      animation: barAnim 1.2s ease-in-out infinite;
+    }
+    .bar-1 { animation-delay: 0.1s; }
+    .bar-2 { animation-delay: 0.3s; }
+    .bar-3 { animation-delay: 0.5s; }
+    .bar-4 { animation-delay: 0.2s; }
+    .bar-5 { animation-delay: 0.4s; }
+  </style>
+</head>
+<body class="flex items-end justify-start min-h-screen">
+
+  <!-- Şarkı Bilgi Kartı (OBS Kaynağı) -->
+  <div id="song-card" class="bg-black/85 backdrop-blur-md border border-[#53fc18]/30 rounded-2xl p-4 flex items-center gap-4 text-white neon-border max-w-md shadow-2xl transition-all duration-500 transform translate-y-4 opacity-0">
+    
+    <!-- Albüm Kapağı & Animasyonlu Dönen Disk -->
+    <div class="relative w-14 h-14 rounded-xl overflow-hidden bg-slate-900 flex-shrink-0 border border-white/10 flex items-center justify-center">
+      <img id="song-thumb" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=256&q=80" class="w-full h-full object-cover" />
+      <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+      <div class="absolute bottom-1 right-1.5 flex items-end gap-0.5 h-4">
+        <span class="w-0.5 bg-[#53fc18] equalizer-bar bar-1 rounded-full"></span>
+        <span class="w-0.5 bg-[#53fc18] equalizer-bar bar-2 rounded-full"></span>
+        <span class="w-0.5 bg-[#53fc18] equalizer-bar bar-3 rounded-full"></span>
+        <span class="w-0.5 bg-[#53fc18] equalizer-bar bar-4 rounded-full"></span>
+      </div>
+    </div>
+
+    <!-- Şarkı Başlığı & İsteyen Kişi -->
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-[#53fc18]">
+        <i data-lucide="music-2" class="w-3 h-3"></i>
+        <span>Şu An Çalıyor</span>
+      </div>
+      <div id="song-title" class="font-extrabold text-sm truncate text-white mt-0.5">
+        Müslüm Gürses - Nilüfer
+      </div>
+      <div class="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
+        <span>İsteyen:</span>
+        <span id="song-requester" class="font-bold text-slate-200">@RoxenFan</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (token) {
+      socket.emit('join_obs', token);
+    }
+
+    const card = document.getElementById('song-card');
+    const titleEl = document.getElementById('song-title');
+    const reqEl = document.getElementById('song-requester');
+    const thumbEl = document.getElementById('song-thumb');
+
+    // Başlangıçta veri çek
+    if (token) {
+      fetch(`/api/widget/data?token=${encodeURIComponent(token)}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.songRequest?.currentSong) {
+            updateSong(d.songRequest.currentSong);
+          }
+        }).catch(() => {});
+    }
+
+    socket.on('song_change', (song) => {
+      if (song && song.title) {
+        updateSong(song);
+      } else {
+        hideSong();
+      }
+    });
+
+    function updateSong(song) {
+      titleEl.innerText = song.title || 'Müzik Çalıyor';
+      reqEl.innerText = song.requestedBy ? `@${song.requestedBy}` : '@Yayıncı';
+      if (song.thumbnail) thumbEl.src = song.thumbnail;
+      card.classList.remove('opacity-0', 'translate-y-4');
+      lucide.createIcons();
+    }
+
+    function hideSong() {
+      card.classList.add('opacity-0', 'translate-y-4');
+    }
+
+    lucide.createIcons();
+  </script>
+</body>
+</html>
